@@ -45,15 +45,16 @@ fun HomeScreen(
         state = state,
         onAppClicked = viewModel::onOpenApp,
         onAddToGrid = viewModel::onAddToGrid,
-        onOpenNotificationShade = viewModel::openNotificationShade,
         onHome = viewModel::onSwitchedToHome,
         onFilterTextChanged = viewModel::onFilterTextChanged,
         onFilterClearPressed = viewModel::onFilterCleared,
         onUninstall = viewModel::uninstallApp,
         onItemClicked = viewModel::onGridItemClicked,
+        onItemDropped = viewModel::onTileDropped,
         onItemLongClicked = viewModel::onGridItemLongClicked,
         onFabClosed = viewModel::onFabClosed,
         onSettingsEvent = viewModel::onSettingsEvent,
+        onSpecialTile = viewModel::addSpecialTile,
         onTileEvent = viewModel::onTileEvent
     )
 }
@@ -63,17 +64,23 @@ private fun HomeScreen(
     state: HomeState,
     onAppClicked: (App) -> Unit = {},
     onAddToGrid: (App) -> Unit = {},
-    onOpenNotificationShade: () -> Unit = {},
     onHome: () -> Unit = {},
     onFilterTextChanged: (String) -> Unit = {},
     onFilterClearPressed: () -> Unit = {},
     onUninstall: (App) -> Unit = {},
     onItemClicked: (item: GridItem) -> Unit = {},
+    onItemDropped: (GridItem, Int, Int) -> Unit = { _, _, _ -> },
     onItemLongClicked: (item: GridItem) -> Unit = {},
     onFabClosed: () -> Unit = {},
     onSettingsEvent: (SettingsEvent) -> Unit = {},
     onTileEvent: (TileEvent) -> Unit = {},
-) = Box {
+    onSpecialTile: (GridItem) -> Unit = {},
+) = androidx.compose.material3.MaterialTheme(
+    colorScheme = if (state.tileSettings.darkTheme) androidx.compose.material3.darkColorScheme(
+        primary = Color(state.tileSettings.accentColor), onPrimary = Color.White, primaryContainer = Color(state.tileSettings.accentColor), onPrimaryContainer = Color.White,
+        background = Color.Black, surface = Color(0xFF141414))
+    else androidx.compose.material3.lightColorScheme(primary = Color(state.tileSettings.accentColor), onPrimary = Color.White, primaryContainer = Color(state.tileSettings.accentColor), onPrimaryContainer = Color.White)
+) { Box(Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
     val pagerState = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
     var pagerWidth by remember { mutableIntStateOf(1) }
@@ -123,11 +130,13 @@ private fun HomeScreen(
             0 -> GridScreenScreen(
                 state = state,
                 hazeState = hazeState,
-                onOpenNotificationShade = onOpenNotificationShade,
                 onItemClicked = onItemClicked,
+                onItemDropped = onItemDropped,
                 onItemLongClicked = onItemLongClicked,
                 onSettingsEvent = onSettingsEvent,
                 onTileEvent = onTileEvent,
+                onAddApp = onAddToGrid,
+                onSpecialTile = onSpecialTile,
                 onFooterClicked = {
                     scope.launch {
                         pagerState.animateScrollToPage(1)
@@ -139,7 +148,6 @@ private fun HomeScreen(
                 state = state,
                 hazeState = hazeState,
                 onAppClicked = onAppClicked,
-                onOpenNotificationShade = onOpenNotificationShade,
                 onAddToGrid = onAddToGrid,
                 onFilterTextChanged = onFilterTextChanged,
                 onFilterClearPressed = onFilterClearPressed,
@@ -151,4 +159,5 @@ private fun HomeScreen(
             )
         }
     }
+}
 }

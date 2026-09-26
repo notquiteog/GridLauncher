@@ -7,6 +7,10 @@ import java.io.File
 @Serializable
 data class TileSettings(
     val isTileFlipEnabled: Boolean = true,
+    val liveTilesEnabled: Boolean = true,
+    val showNotificationText: Boolean = false,
+    val accentColor: Long = 0xFF0078D7,
+    val darkTheme: Boolean = true,
     val cornerRadius: Int = defaultRadius,
     val isAppLabelsHidden: Boolean = false,
     val wallpaperPath: String? = null,

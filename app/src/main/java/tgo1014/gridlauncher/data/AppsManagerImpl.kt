@@ -36,7 +36,10 @@ class AppsManagerImpl @Inject constructor(
     }
 
     override fun openApp(app: App) {
-        context.startActivity(packageManager.getLaunchIntentForPackage(app.packageName))
+        val intent = tgo1014.gridlauncher.live.BuiltInTiles.intent(app.packageName)
+            ?: packageManager.getLaunchIntentForPackage(app.packageName)
+        if (intent != null) runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { android.widget.Toast.makeText(context, "This app is unavailable", android.widget.Toast.LENGTH_SHORT).show() }
     }
 
     override suspend fun setGrid(grid: List<GridItem>) = appsManagerDataSource.setGrid(grid)
@@ -66,6 +69,8 @@ class AppsManagerImpl @Inject constructor(
             packageManager.queryIntentActivities(intent, GET_META_DATA)
         }
         return resolveInfoList
+            .distinctBy { it.packageName }
+            .filterNot { it.packageName == context.packageName }
             .mapNotNull {
                 App(
                     name = it.appName,

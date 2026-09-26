@@ -82,3 +82,8 @@ lint/tmp/
 # lint/reports/
 
 .idea/
+
+.kotlin/
+*.jks
+*.keystore
+dist/

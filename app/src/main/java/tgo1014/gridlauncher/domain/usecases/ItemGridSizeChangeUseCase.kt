@@ -17,7 +17,6 @@ class ItemGridSizeChangeUseCase @Inject constructor(
             TileSize.Medium -> item.copy(width = 2, height = 2)
             TileSize.Large -> item.copy(width = 4, height = 2)
         }
-        newGrid.add(newItem)
-        appsManager.setGrid(newGrid)
+        appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(currentGrid, newItem))
     }
 }

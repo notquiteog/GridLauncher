@@ -19,7 +19,6 @@ class MoveGridItemUseCase @Inject constructor(
             Direction.Left -> item.copy(x = (item.x - 1).coerceAtLeast(0))
             Direction.Right -> item.copy(x = (item.x + 1).coerceAtMost(Constants.gridColumns - item.width))
         }
-        newGrid.add(newItem)
-        appsManager.setGrid(newGrid)
+        appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(currentGrid, newItem))
     }
 }

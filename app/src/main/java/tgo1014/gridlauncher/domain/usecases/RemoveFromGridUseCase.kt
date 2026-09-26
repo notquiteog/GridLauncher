@@ -13,7 +13,7 @@ class RemoveFromGridUseCase @Inject constructor(
             .firstOrNull()
             .orEmpty()
             .toMutableList()
-        newGrid.remove(gridItem)
+        newGrid.removeAll { it.id == gridItem.id }
         appsManager.setGrid(newGrid)
 
     }

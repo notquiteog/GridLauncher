@@ -11,4 +11,7 @@ data class GridItem(
     val height: Int = width,
     val x: Int = 0,
     val y: Int = 0,
+    val children: List<App> = emptyList(),
+    val widgetId: Int = -1,
+    val photoUris: List<String> = emptyList(),
 )

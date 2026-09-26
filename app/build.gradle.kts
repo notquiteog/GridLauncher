@@ -11,24 +11,24 @@ plugins {
 
 android {
     namespace = "tgo1014.gridlauncher"
-    // compileSdk = 34
-    compileSdkPreview = "VanillaIceCream"
+    compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        applicationId = "tgo1014.gridlauncher"
-        minSdk = 21
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        applicationId = "io.github.notquiteog.gridlauncher"
+        minSdk = 26
+        targetSdk = 37
+        versionCode = 20000 + (providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 0)
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
     signingConfigs {
         create("release") {
-            storeFile = file("dummyKey")
-            storePassword = "123456"
-            keyAlias = "dummyKey"
-            keyPassword = "123456"
+            storeFile = file(providers.environmentVariable("SIGNING_KEYSTORE").orNull ?: "dummyKey")
+            storePassword = providers.environmentVariable("SIGNING_STORE_PASSWORD").orNull ?: "123456"
+            keyAlias = providers.environmentVariable("SIGNING_KEY_ALIAS").orNull ?: "dummyKey"
+            keyPassword = providers.environmentVariable("SIGNING_KEY_PASSWORD").orNull ?: "123456"
         }
     }
     buildTypes {
@@ -52,7 +52,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions.jvmTarget = "17"
+
     buildFeatures.compose = true
     packaging {
         resources {
@@ -61,13 +61,7 @@ android {
     }
 }
 
-composeCompiler {
-    featureFlags = setOf(
-        ComposeFeatureFlag.IntrinsicRemember,
-        ComposeFeatureFlag.OptimizeNonSkippingGroups,
-        ComposeFeatureFlag.StrongSkipping,
-    )
-}
+kotlin { jvmToolchain(17) }
 
 kapt.correctErrorTypes = true
 hilt.enableAggregatingTask = true
@@ -98,8 +92,8 @@ dependencies {
     testImplementation(libs.app.turbine)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
-    //androidTestImplementation(platform(libs.compose.bom))
-    //androidTestImplementation(libs.ui.test.junit4)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation(libs.ui.tooling)
     debugImplementation(libs.ui.test.manifest)
 

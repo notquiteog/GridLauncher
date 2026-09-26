@@ -57,11 +57,13 @@ fun TileLayout(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     isOnTop: (Boolean) -> Unit = {},
     onItemClicked: (item: GridItem) -> Unit = {},
+    onItemDropped: (GridItem, Int, Int) -> Unit = { _, _, _ -> },
     onItemLongClicked: (item: GridItem) -> Unit = {},
     footer: @Composable (Modifier) -> Unit = {},
 ) = BoxWithConstraints(modifier = modifier) {
     val padding = 4.dp
     val gridItemSize = (this.maxWidth - (padding * 2)) / columns
+    val cellPixels = with(androidx.compose.ui.platform.LocalDensity.current) { gridItemSize.toPx() }
     var firstItemPosition: Float? by remember { mutableStateOf(null) }
     LaunchedIfTrueEffect(grid.isEmpty()) {
         isOnTop(true)
@@ -69,7 +71,7 @@ fun TileLayout(
     val systemBars = WindowInsets.systemBars.asPaddingValues()
     var base by remember { mutableStateOf(PaddingValues()) }
     val configuration = LocalConfiguration.current
-    LaunchedEffect(itemBeingEdited) {
+    LaunchedEffect(itemBeingEdited, configuration, systemBars) {
         var basePadding = systemBars + PaddingValues(padding) + contentPadding
         if (itemBeingEdited != null) {
             basePadding += PaddingValues(bottom = configuration.screenHeightDp.dp / 2)
@@ -104,6 +106,7 @@ fun TileLayout(
                     tileSettings = tileSettings,
                     isEditMode = it.id == itemBeingEdited?.id,
                     onItemClicked = onItemClicked,
+                    onItemDropped = { item, dx, dy -> onItemDropped(item, kotlin.math.round(dx / cellPixels).toInt(), kotlin.math.round(dy / cellPixels).toInt()) },
                     onItemLongClicked = onItemLongClicked,
                     modifier = Modifier
                         .fillMaxSize()
@@ -116,15 +119,13 @@ fun TileLayout(
                                 isOnTop(firstItemPosition == y)
                             }
                         }
-                        .then(hazeChildModifier)
+
                 )
             }
         }
         // Footer
-        val maxY = grid.maxOfOrNull { it.y } ?: 0
-        val rowOffset = grid.filter { it.y == maxY }
-            .fastMaxOfOrNull { it.height }
-            ?: 0
+        val maxY = grid.maxOfOrNull { it.y + it.height } ?: 0
+        val rowOffset = 0
         items(
             count = 1,
             layoutInfo = {

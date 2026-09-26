@@ -1,0 +1,69 @@
+package tgo1014.gridlauncher
+
+import android.content.Intent
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import tgo1014.gridlauncher.ui.MainActivity
+import tgo1014.gridlauncher.ui.models.GridItem
+import tgo1014.gridlauncher.domain.models.App
+import tgo1014.gridlauncher.domain.models.TileSettings
+import tgo1014.gridlauncher.live.*
+
+@RunWith(AndroidJUnit4::class)
+class LauncherTest {
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    private fun seed(tiles: List<GridItem>) {
+        runBlocking {
+            compose.activity.settingsRepository.updateSettings(TileSettings())
+            compose.activity.appsManager.setGrid(tiles)
+        }
+        compose.waitForIdle()
+    }
+    @Test fun homeIntentAndAppDrawerWork() {
+        val context = compose.activity
+        val homes = context.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+        assertTrue(homes.any { it.activityInfo.packageName == context.packageName })
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 2)))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Search apps").performTextInput("zzzz-no-such-app")
+        compose.onNodeWithText("No apps found").assertIsDisplayed()
+        compose.onNodeWithText("Clear").performClick()
+        compose.onNodeWithText("Start ←").performClick()
+        compose.onNodeWithContentDescription("Clock").assertIsDisplayed()
+    }
+    @Test fun tileResizeMoveAndUnpinPersist() {
+        seed(listOf(GridItem(1, App("Battery", BuiltInTiles.BATTERY), 2)))
+        compose.onNodeWithContentDescription("Battery").performTouchInput { longClick() }
+        compose.onNodeWithText("Large").performClick()
+        compose.waitUntil(5000) { runBlocking { compose.activity.appsManager.homeGridFlow.first().first().width == 4 } }
+        compose.onNodeWithText("Remove").performClick()
+        compose.waitUntil(5000) { runBlocking { compose.activity.appsManager.homeGridFlow.first().isEmpty() } }
+    }
+    @Test fun notificationsUpdateBadgeAndPreviewThenClear() {
+        seed(listOf(GridItem(1, App("Example", "org.example.messages"), 4, height = 2)))
+        runBlocking { compose.activity.settingsRepository.updateSettings(TileSettings(showNotificationText = true)) }
+        NotificationTiles.post(TileNotification("message", "org.example.messages", "Hello from Android", "A real tile update", 1))
+        compose.waitUntil(5000) { compose.onAllNodesWithText("Hello from Android").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("A real tile update").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Example, 1 notifications").assertIsDisplayed()
+        NotificationTiles.remove("message")
+        compose.onNodeWithContentDescription("Example").assertIsDisplayed()
+        compose.onNodeWithText("Hello from Android").assertDoesNotExist()
+    }
+    @Test fun settingsOpenAndFolderContentsDisplay() {
+        seed(listOf(GridItem(1, App("Favorites", BuiltInTiles.FOLDER), 2, children = listOf(App("Settings", "com.android.settings")))))
+        compose.onNodeWithContentDescription("Favorites").performClick()
+        compose.onNodeWithText("Settings").assertIsDisplayed()
+        compose.onNodeWithText("Close").performClick()
+        compose.onNodeWithContentDescription("Customize Start").performClick()
+        compose.onNodeWithText("Make it yours").assertIsDisplayed()
+        compose.onNodeWithText("Live tiles").assertIsDisplayed()
+    }
+}

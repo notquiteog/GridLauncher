@@ -40,18 +40,19 @@ import tgo1014.gridlauncher.ui.models.SettingsEvent
 import tgo1014.gridlauncher.ui.models.TileEvent
 import tgo1014.gridlauncher.ui.theme.GridLauncherTheme
 import tgo1014.gridlauncher.ui.theme.conditional
-import tgo1014.gridlauncher.ui.theme.onOpenNotificationShade
 
 @Composable
 fun GridScreenScreen(
     state: HomeState,
     hazeState: HazeState = remember { HazeState() },
     onItemClicked: (item: GridItem) -> Unit = {},
+    onItemDropped: (GridItem, Int, Int) -> Unit = { _, _, _ -> },
     onItemLongClicked: (item: GridItem) -> Unit = {},
     onFooterClicked: () -> Unit = {},
-    onOpenNotificationShade: () -> Unit = {},
     onTileEvent: (TileEvent) -> Unit = {},
     onSettingsEvent: (SettingsEvent) -> Unit = {},
+    onAddApp: (App) -> Unit = {},
+    onSpecialTile: (GridItem) -> Unit = {},
 ) {
     var isOnTop by remember { mutableStateOf(true) }
     TileLayout(
@@ -82,12 +83,12 @@ fun GridScreenScreen(
         onItemLongClicked = onItemLongClicked,
         isOnTop = { isOnTop = it },
         onItemClicked = onItemClicked,
+        onItemDropped = onItemDropped,
         contentPadding = if (state.itemBeingEdited == null) PaddingValues(0.dp) else PaddingValues(
             bottom = 200.dp
         ),
         modifier = Modifier
             .fillMaxSize()
-            .onOpenNotificationShade(isOnTop, onOpenNotificationShade)
             // .background(Color.Black) TODO this line recreates old WP 7 style, need to add some options for this in the future
     )
     TileSettingsBottomSheet(
@@ -97,7 +98,10 @@ fun GridScreenScreen(
     SettingsBottomSheet(
         tileSettings = state.tileSettings,
         isShowing = state.isSettingsSheetShowing,
-        onSettingsEvent = onSettingsEvent
+        onSettingsEvent = onSettingsEvent,
+        apps = state.appList,
+        onAddApp = onAddApp,
+        onAddSpecial = onSpecialTile
     )
 }
 
@@ -153,7 +157,7 @@ private fun SettingsIcon(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
-                    contentDescription = null,
+                    contentDescription = "Customize Start",
                     tint = contentColor
                 )
             }
@@ -166,7 +170,7 @@ private fun SettingsIcon(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
-                    contentDescription = null,
+                    contentDescription = "Customize Start",
                     tint = contentColor
                 )
             }

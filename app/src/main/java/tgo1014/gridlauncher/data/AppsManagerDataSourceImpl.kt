@@ -38,6 +38,13 @@ class AppsManagerDataSourceImpl @Inject constructor(
     override suspend fun setAppList(appList: List<App>) {
         dataStore.edit {
             it[appListKey] = json.encodeToString(appList)
+            if (it[gridKey] == null && appList.isNotEmpty()) {
+                val builtIns = tgo1014.gridlauncher.live.BuiltInTiles.apps.take(2)
+                val initial = (builtIns + appList.take(8)).mapIndexed { index, app ->
+                    GridItem(id = index, app = app, width = 2, x = (index % 3) * 2, y = (index / 3) * 2)
+                }
+                it[gridKey] = json.encodeToString(initial)
+            }
         }
     }
 
