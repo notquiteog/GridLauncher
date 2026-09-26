@@ -74,6 +74,9 @@ class MainActivity : ComponentActivity() {
     private val homeViewModel: HomeScreenViewModel by viewModels()
     val widgetHost by lazy { AppWidgetHost(this, 1701) }
     private var pendingWidget = -1
+    private val packageUpdates = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) { lifecycleScope.launch { updateAppListUseCase() } }
+    }
     private val configureWidget = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) finishWidget() else cancelWidget()
     }
@@ -95,8 +98,14 @@ class MainActivity : ComponentActivity() {
         setContent { GridLauncherTheme { HomeScreen(homeViewModel) } }
     }
     override fun onSaveInstanceState(outState: Bundle) { outState.putInt("pendingWidget", pendingWidget); super.onSaveInstanceState(outState) }
-    override fun onStart() { super.onStart(); runCatching { widgetHost.startListening() } }
-    override fun onStop() { widgetHost.stopListening(); super.onStop() }
+    override fun onStart() {
+        super.onStart(); runCatching { widgetHost.startListening() }
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED); addAction(Intent.ACTION_PACKAGE_CHANGED); addDataScheme("package")
+        }
+        androidx.core.content.ContextCompat.registerReceiver(this, packageUpdates, filter, androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
+    }
+    override fun onStop() { unregisterReceiver(packageUpdates); widgetHost.stopListening(); super.onStop() }
     override fun onResume() { super.onResume(); lifecycleScope.launch { updateAppListUseCase() } }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
 

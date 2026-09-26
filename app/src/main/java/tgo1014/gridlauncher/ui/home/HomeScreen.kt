@@ -1,5 +1,8 @@
 package tgo1014.gridlauncher.ui.home
 
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
+import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +44,12 @@ fun HomeScreen(
     viewModel: HomeScreenViewModel = hiltViewModel()
 ) {
     val state by viewModel.stateFlow.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? androidx.activity.ComponentActivity
+    SideEffect {
+        val style = if (state.tileSettings.darkTheme) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+            else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        activity?.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+    }
     HomeScreen(
         state = state,
         onAppClicked = viewModel::onOpenApp,
@@ -123,7 +132,7 @@ private fun HomeScreen(
         ),
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha))
+            .background(if (state.tileSettings.isTransparencyEnabled) Color.Black.copy(alpha) else Color.Transparent)
             .onSizeChanged { pagerWidth = it.width }
     ) {
         when (it) {

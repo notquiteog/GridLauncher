@@ -44,6 +44,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import kotlinx.coroutines.withContext
 import tgo1014.gridlauncher.domain.models.TileSettings
 import tgo1014.gridlauncher.live.BuiltInTiles
@@ -92,24 +95,31 @@ fun GridTile(
         }
     }
     var drag by remember { mutableStateOf(Offset.Zero) }
+    var holding by remember { mutableStateOf(false) }
+    val gestureScope = rememberCoroutineScope()
     val accent = Color(tileSettings.accentColor)
     Box(modifier = modifier
         .offset { IntOffset(drag.x.roundToInt(), drag.y.roundToInt()) }
         .pointerInput(item.id, item.x, item.y) {
             detectDragGesturesAfterLongPress(
-                onDragStart = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
-                onDragCancel = { drag = Offset.Zero },
+                onDragStart = { holding = true; haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                onDragCancel = {
+                    if (holding && drag == Offset.Zero) onItemLongClicked(item)
+                    drag = Offset.Zero
+                    gestureScope.launch { delay(150); holding = false }
+                },
                 onDragEnd = {
                     if (abs(drag.x) > 24 || abs(drag.y) > 24) onItemDropped(item, drag.x, drag.y)
                     else onItemLongClicked(item)
                     drag = Offset.Zero
+                    gestureScope.launch { delay(150); holding = false }
                 },
                 onDrag = { change, amount -> change.consume(); drag += amount }
             )
         }.clip(RoundedCornerShape(tileSettings.cornerRadius))
         .background(if (tileSettings.isTransparencyEnabled) accent.copy(alpha = .70f) else accent)
-        .semantics { contentDescription = item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else "" }
-        .combinedClickable(onClick = { if (isEditMode) onItemClicked(item) else open() })) {
+        .semantics { contentDescription = item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = listOf(CustomAccessibilityAction("Edit tile") { onItemLongClicked(item); true }) }
+        .combinedClickable(onClick = { if (!holding) { if (isEditMode) onItemClicked(item) else open() } })) {
         if (item.widgetId >= 0) {
             val activity = context as? MainActivity
             val manager = AppWidgetManager.getInstance(context)

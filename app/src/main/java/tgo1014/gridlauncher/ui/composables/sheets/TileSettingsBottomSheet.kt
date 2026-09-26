@@ -92,25 +92,25 @@ private fun TileSettingsContent(
                 onClick = { onTileEvent(TileEvent.OnTileMoved(Direction.Left)) },
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.AutoMirrored.Default.KeyboardArrowLeft, null)
+                Icon(Icons.AutoMirrored.Default.KeyboardArrowLeft, "Move left")
             }
             FilledIconButton(
                 onClick = { onTileEvent(TileEvent.OnTileMoved(Direction.Down)) },
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Default.KeyboardArrowDown, null)
+                Icon(Icons.Default.KeyboardArrowDown, "Move down")
             }
             FilledIconButton(
                 onClick = { onTileEvent(TileEvent.OnTileMoved(Direction.Up)) },
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Default.KeyboardArrowUp, null)
+                Icon(Icons.Default.KeyboardArrowUp, "Move up")
             }
             FilledIconButton(
                 onClick = { onTileEvent(TileEvent.OnTileMoved(Direction.Right)) },
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.AutoMirrored.Default.KeyboardArrowRight, null)
+                Icon(Icons.AutoMirrored.Default.KeyboardArrowRight, "Move right")
             }
         }
         FilledIconButton(

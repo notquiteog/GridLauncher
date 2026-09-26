@@ -57,6 +57,30 @@ class LauncherTest {
         compose.onNodeWithContentDescription("Example").assertIsDisplayed()
         compose.onNodeWithText("Hello from Android").assertDoesNotExist()
     }
+    @Test fun notificationListenerReceivesAndroidPostedNotification() {
+        seed(listOf(GridItem(1, App("Shell messages", "com.android.shell"), 2)))
+        val component = "io.github.notquiteog.gridlauncher/tgo1014.gridlauncher.live.LiveNotificationService"
+        fun shell(command: String) {
+            val output = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(output).use { it.readBytes() }
+        }
+        try {
+            shell("cmd notification allow_listener $component")
+            shell("cmd notification post -t GridLauncher grid-test Android-notification")
+            compose.waitUntil(10000) { NotificationTiles.notifications.value.any { it.packageName == "com.android.shell" } }
+            compose.onNodeWithContentDescription("Shell messages, 1 notifications").assertIsDisplayed()
+        } finally { shell("cmd notification disallow_listener $component"); NotificationTiles.replace(emptyList()) }
+    }
+    @Test fun holdingAndDraggingMovesTileWithoutOpeningApp() {
+        seed(listOf(GridItem(1, App("Battery", BuiltInTiles.BATTERY), 2)))
+        compose.onNodeWithContentDescription("Battery").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(androidx.compose.ui.geometry.Offset(380f, 0f), delayMillis = 200)
+            up()
+        }
+        compose.waitUntil(5000) { runBlocking { compose.activity.appsManager.homeGridFlow.first().single().x > 0 } }
+    }
     @Test fun settingsOpenAndFolderContentsDisplay() {
         seed(listOf(GridItem(1, App("Favorites", BuiltInTiles.FOLDER), 2, children = listOf(App("Settings", "com.android.settings")))))
         compose.onNodeWithContentDescription("Favorites").performClick()
