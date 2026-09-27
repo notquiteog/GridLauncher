@@ -1,59 +1,29 @@
 package tgo1014.gridlauncher.domain
 
-import org.junit.Before
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
+import org.junit.Assert.*
 import org.junit.Test
 import tgo1014.gridlauncher.FakeAppsManager
 import tgo1014.gridlauncher.domain.models.App
 import tgo1014.gridlauncher.domain.usecases.AddToGridUseCase
-import tgo1014.gridlauncher.runTurbineTest
 import tgo1014.gridlauncher.ui.models.GridItem
 
 class AddToGridUseCaseTest {
-
-    lateinit var appsManager: FakeAppsManager
-    lateinit var useCase: AddToGridUseCase
-
-    @Before
-    fun init() {
-        appsManager = FakeAppsManager()
-        useCase = AddToGridUseCase(appsManager)
+    @Test fun insertWhenGridIsEmpty() = runTest {
+        val manager = FakeAppsManager(); AddToGridUseCase(manager)(App())
+        assertEquals(1, manager.homeGridFlow.first().single().width)
     }
-
-    @Test
-    fun insertWhenGridIsEmpty() = runTurbineTest {
-        val gridFlow = appsManager.homeGridFlow.testIn(it.backgroundScope)
-        assert(gridFlow.awaitItem().isEmpty())
-        useCase(App())
-        assert(gridFlow.awaitItem().isNotEmpty())
+    @Test fun nextRowWhenWholeCellGridIsFull() = runTest {
+        val manager = FakeAppsManager()
+        manager.setGrid((0..2).map { GridItem(it, App(), 1, x = it) })
+        AddToGridUseCase(manager)(App())
+        assertEquals(1, manager.homeGridFlow.first().first { it.id == 3 }.y)
     }
-
-    @Test
-    fun findSlotToFindTileWhenRowIsFull() = runTurbineTest {
-        val gridFlow = appsManager.homeGridFlow.testIn(it.backgroundScope)
-        val startGrid = listOf(
-            GridItem(app = App(), width = 2, height = 2, x = 0, y = 0),
-            GridItem(app = App(), width = 2, height = 2, x = 2, y = 0),
-            GridItem(app = App(), width = 2, height = 2, x = 4, y = 0),
-        )
-        appsManager.setGrid(startGrid)
-        assert(gridFlow.awaitItem().isEmpty())
-        useCase(App())
-        val newGrid = gridFlow.expectMostRecentItem()
-        assert(newGrid.find { it.y == 2 } != null)
+    @Test fun fillsGapAndSupportsSixColumns() = runTest {
+        val manager = FakeAppsManager()
+        manager.setGrid((0..4).map { GridItem(it, App(), 1, x = it) })
+        AddToGridUseCase(manager)(App(), 6)
+        assertEquals(5, manager.homeGridFlow.first().first { it.id == 5 }.x)
     }
-
-    @Test
-    fun findSlotToFindTile() = runTurbineTest {
-        val gridFlow = appsManager.homeGridFlow.testIn(it.backgroundScope)
-        val startGrid = listOf(
-            GridItem(app = App(), width = 2, height = 2, x = 0, y = 0),
-            GridItem(app = App(), width = 2, height = 2, x = 5, y = 0)
-        )
-        appsManager.setGrid(startGrid)
-        assert(gridFlow.awaitItem().isEmpty())
-        useCase(App())
-        val newGrid = gridFlow.expectMostRecentItem()
-        assert(newGrid.find { it.x == 2 } != null)
-    }
-
 }

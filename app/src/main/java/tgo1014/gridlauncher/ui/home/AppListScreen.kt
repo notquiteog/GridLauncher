@@ -7,6 +7,8 @@ import android.os.Process
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -34,16 +36,22 @@ fun AppListScreen(
 ) {
     BackHandler(onBack = onBackPressed)
     val context = LocalContext.current
+    val activity = androidx.activity.compose.LocalActivity.current as? tgo1014.gridlauncher.ui.MainActivity
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var alphabet by remember { mutableStateOf(false) }
     val groups = remember(state.appList) { state.appList.sortedBy { it.name.lowercase() }.groupBy { it.nameFirstLetter.uppercase() } }
-    Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 20.dp)) {
+    val ink = if (state.tileSettings.darkTheme) Color.White else Color(0xFF142C42)
+    val background = if (state.tileSettings.darkTheme) Color(0xFF101E30) else Color(0xFFEDF4FA)
+    CompositionLocalProvider(LocalContentColor provides ink) {
+    Column(Modifier.fillMaxSize().background(background).systemBarsPadding().imePadding().padding(horizontal = 20.dp)) {
+        if (state.tileSettings.oneHanded) Spacer(Modifier.height(80.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("All apps", style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
+            Text("All apps", color = ink, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
             TextButton(onClick = onBackPressed) { Text("Start ←") }
         }
         OutlinedTextField(state.filterString, onFilterTextChanged, placeholder = { Text("Search apps") }, singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = ink, focusedPlaceholderColor = ink.copy(alpha = .7f), unfocusedPlaceholderColor = ink.copy(alpha = .7f)),
             trailingIcon = { if (state.filterString.isNotEmpty()) TextButton(onClick = onFilterClearPressed) { Text("Clear") } }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
         if (groups.isEmpty()) Text("No apps found", Modifier.padding(16.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -61,11 +69,13 @@ fun AppListScreen(
                     Box {
                         Row(Modifier.fillMaxWidth().combinedClickable(onClick = { onAppClicked(app) }, onLongClick = { menu = true }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             AsyncImage(app.icon.iconFile, Modifier.size(48.dp))
-                            Text(app.name, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp))
+                            Text(app.name, color = ink, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp))
                         }
                         DropdownMenu(menu, { menu = false }) {
                             DropdownMenuItem(text = { Text("Pin to Start") }, onClick = { menu = false; onAddToGrid(app) })
-                            shortcuts.forEach { shortcut -> DropdownMenuItem(text = { Text(shortcut.shortLabel?.toString().orEmpty()) }, onClick = {
+                            shortcuts.forEach { shortcut ->
+                                DropdownMenuItem(text = { Text("Pin: ${shortcut.shortLabel}") }, onClick = { menu = false; activity?.pinShortcut(app, shortcut) })
+                                DropdownMenuItem(text = { Text(shortcut.shortLabel?.toString().orEmpty()) }, onClick = {
                                 menu = false; runCatching { launcher.startShortcut(shortcut, null, null) }
                             }) }
                             DropdownMenuItem(text = { Text("App info") }, onClick = {
@@ -87,4 +97,6 @@ fun AppListScreen(
             }, modifier = Modifier.weight(1f)) { Text(letter, fontSize = 22.sp) } }
         } } }
     }, confirmButton = { TextButton(onClick = { alphabet = false }) { Text("Close") } })
+}
+
 }

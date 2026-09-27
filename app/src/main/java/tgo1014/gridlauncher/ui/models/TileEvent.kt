@@ -4,6 +4,8 @@ import tgo1014.gridlauncher.domain.models.Direction
 import tgo1014.gridlauncher.domain.models.TileSize
 
 sealed class TileEvent {
+    data class OnCellSize(val width: Int, val height: Int) : TileEvent()
+    data object OnTogglePositionPin : TileEvent()
     data class OnSizeChange(val tileSize: TileSize) : TileEvent()
     data class OnTileMoved(val direction: Direction) : TileEvent()
     data object OnRemoveClicked : TileEvent()

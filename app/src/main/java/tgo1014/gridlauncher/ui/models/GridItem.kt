@@ -14,4 +14,9 @@ data class GridItem(
     val children: List<App> = emptyList(),
     val widgetId: Int = -1,
     val photoUris: List<String> = emptyList(),
+    val positionPinned: Boolean = false,
+    val shortcutId: String? = null,
+    val destination: String? = null,
+    val contact: tgo1014.gridlauncher.live.PinnedContact? = null,
+    val contacts: List<tgo1014.gridlauncher.live.PinnedContact> = emptyList(),
 )

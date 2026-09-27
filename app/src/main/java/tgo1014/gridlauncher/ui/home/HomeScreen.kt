@@ -1,6 +1,10 @@
 package tgo1014.gridlauncher.ui.home
 
 import androidx.activity.compose.LocalActivity
+import androidx.compose.runtime.CompositionLocalProvider
+import tgo1014.gridlauncher.ui.theme.LocalGlass
+import tgo1014.gridlauncher.ui.theme.rememberGlass
+import tgo1014.gridlauncher.ui.theme.GlassBackdrop
 
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
@@ -66,7 +70,10 @@ fun HomeScreen(
         onFabClosed = viewModel::onFabClosed,
         onSettingsEvent = viewModel::onSettingsEvent,
         onSpecialTile = viewModel::addSpecialTile,
-        onTileEvent = viewModel::onTileEvent
+        onTileEvent = viewModel::onTileEvent,
+        onProfile = viewModel::selectProfile,
+        onCopyProfile = viewModel::copyProfile,
+        onEditLayout = viewModel::setEditingLayout
     )
 }
 
@@ -86,7 +93,10 @@ private fun HomeScreen(
     onSettingsEvent: (SettingsEvent) -> Unit = {},
     onTileEvent: (TileEvent) -> Unit = {},
     onSpecialTile: (GridItem) -> Unit = {},
-) = androidx.compose.material3.MaterialTheme(
+    onProfile: (String) -> Unit = {},
+    onCopyProfile: (String) -> Unit = {},
+    onEditLayout: (Boolean) -> Unit = {},
+) { CompositionLocalProvider(LocalGlass provides rememberGlass(state.tileSettings), androidx.compose.material3.LocalContentColor provides if (state.tileSettings.darkTheme) Color.White else Color(0xFF142C42)) { androidx.compose.material3.MaterialTheme(
     colorScheme = if (state.tileSettings.darkTheme) androidx.compose.material3.darkColorScheme(
         primary = Color(state.tileSettings.accentColor), onPrimary = Color.White, primaryContainer = Color(state.tileSettings.accentColor), onPrimaryContainer = Color.White,
         background = Color.Black, surface = Color(0xFF141414))
@@ -112,6 +122,7 @@ private fun HomeScreen(
         keyboardController?.hide()
     }
     val hazeState = remember { HazeState() }
+    if (!state.tileSettings.isTransparencyEnabled) GlassBackdrop(Modifier.haze(state = hazeState))
     if (state.tileSettings.isTransparencyEnabled) {
         key(state.tileSettings.wallpaperFile) {
             AsyncImage(
@@ -148,6 +159,9 @@ private fun HomeScreen(
                 onTileEvent = onTileEvent,
                 onAddApp = onAddToGrid,
                 onSpecialTile = onSpecialTile,
+                onProfile = onProfile,
+                onCopyProfile = onCopyProfile,
+                onEditLayout = onEditLayout,
                 onFooterClicked = {
                     scope.launch {
                         pagerState.animateScrollToPage(1)
@@ -172,3 +186,5 @@ private fun HomeScreen(
     }
 }
 }
+
+} }

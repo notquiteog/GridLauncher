@@ -1,6 +1,12 @@
 package tgo1014.gridlauncher.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import tgo1014.gridlauncher.ui.theme.LocalGlass
+import tgo1014.gridlauncher.data.profileNames
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +25,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.contentColorFor
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,13 +62,37 @@ fun GridScreenScreen(
     onSettingsEvent: (SettingsEvent) -> Unit = {},
     onAddApp: (App) -> Unit = {},
     onSpecialTile: (GridItem) -> Unit = {},
+    onProfile: (String) -> Unit = {},
+    onCopyProfile: (String) -> Unit = {},
+    onEditLayout: (Boolean) -> Unit = {},
 ) {
     var isOnTop by remember { mutableStateOf(true) }
+    val glass = LocalGlass.current
+    androidx.activity.compose.BackHandler(enabled = state.isEditingLayout && state.itemBeingEdited == null) { onEditLayout(false) }
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+    Box(Modifier.fillMaxWidth().animateContentSize(if (glass.motion) spring(dampingRatio = .9f, stiffness = 350f) else snap())) {
+        if (state.tileSettings.oneHanded) Spacer(Modifier.height(100.dp))
+    }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
+        Column(Modifier.weight(1f)) {
+            Text(java.text.SimpleDateFormat("EEEE, MMMM d", java.util.Locale.getDefault()).format(java.util.Date()), color = glass.ink.copy(alpha = .8f), fontSize = 12.sp)
+            Text("Start", color = glass.ink, fontSize = 42.sp, fontWeight = FontWeight.Light)
+        }
+        TextButton(onClick = { onEditLayout(!state.isEditingLayout) }) { Text(if (state.isEditingLayout) "Done" else "Edit layout", color = glass.ink) }
+        IconButton(onClick = { onSettingsEvent(SettingsEvent.OnSettingsIconClicked) }) { Icon(Icons.Default.Settings, "Customize Start", tint = glass.ink) }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        profileNames.forEach { name -> FilterChip(selected = state.profile == name, onClick = { onProfile(name) }, label = { Text(name) }, colors = FilterChipDefaults.filterChipColors(containerColor = androidx.compose.ui.graphics.Color.Transparent, selectedContainerColor = glass.accent.copy(alpha = .22f), labelColor = glass.ink, selectedLabelColor = glass.ink)) }
+    }
+    NowArea(hazeState)
+    if (state.grid.isEmpty()) Text("Add apps to ${state.profile} using All apps below.", color = glass.ink, modifier = Modifier.padding(12.dp))
     TileLayout(
         grid = state.grid,
+        columns = state.tileSettings.gridColumns,
         tileSettings = state.tileSettings,
         hazeState = hazeState,
         itemBeingEdited = state.itemBeingEdited,
+        editingLayout = state.isEditingLayout,
         footer = { modifier ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
@@ -68,11 +101,7 @@ fun GridScreenScreen(
                     .fillMaxWidth()
                     .padding(4.dp),
             ) {
-                SettingsIcon(
-                    modifier = modifier,
-                    tileSettings = state.tileSettings,
-                    onClicked = { onSettingsEvent(SettingsEvent.OnSettingsIconClicked) }
-                )
+
                 Footer(
                     modifier = modifier,
                     onFooterClicked = onFooterClicked,
@@ -88,11 +117,12 @@ fun GridScreenScreen(
             bottom = 200.dp
         ),
         modifier = Modifier
-            .fillMaxSize()
-            // .background(Color.Black) TODO this line recreates old WP 7 style, need to add some options for this in the future
+            .fillMaxWidth().weight(1f)
     )
+    }
     TileSettingsBottomSheet(
-        isShowing = state.isEditMode,
+        isShowing = state.isEditingLayout && state.itemBeingEdited != null,
+        item = state.itemBeingEdited,
         onTileEvent = onTileEvent,
     )
     SettingsBottomSheet(
@@ -101,7 +131,9 @@ fun GridScreenScreen(
         onSettingsEvent = onSettingsEvent,
         apps = state.appList,
         onAddApp = onAddApp,
-        onAddSpecial = onSpecialTile
+        onAddSpecial = onSpecialTile,
+        currentProfile = state.profile,
+        onCopyProfile = onCopyProfile
     )
 }
 
@@ -114,11 +146,7 @@ private fun Footer(
 ) {
     val bgColor = MaterialTheme.colorScheme.primaryContainer
     val _modifier = Modifier
-        .conditional(
-            condition = tileSettings.isTransparencyEnabled,
-            ifTrue = { then(modifier) },
-            ifFalse = { clip(RoundedCornerShape(tileSettings.cornerRadius)).background(bgColor) }
-        )
+        .then(modifier)
         .clickable { onFooterClicked() }
         .padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 3.dp)
     Row(
@@ -126,7 +154,7 @@ private fun Footer(
         verticalAlignment = Alignment.CenterVertically,
         modifier = _modifier
     ) {
-        val contentColor = contentColorFor(bgColor)
+        val contentColor = LocalGlass.current.ink
         Text(text = "All apps", color = contentColor)
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,

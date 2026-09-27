@@ -1,56 +1,77 @@
 # GridLauncher for Android 17
 
-A native Kotlin / Jetpack Compose home app inspired by Windows 10 Mobile, developed from [Tgo1014/GridLauncher](https://github.com/Tgo1014/GridLauncher)'s `develop` branch. The upstream license and attribution are preserved.
+A native Kotlin / Jetpack Compose launcher combining Windows Phone's information-first Start screen with glass materials. Based on [Tgo1014/GridLauncher](https://github.com/Tgo1014/GridLauncher)'s `develop` branch; the Apache license and attribution are preserved.
 
 ## Install
 
-Download **GridLauncher-Android17.apk** from this fork's [Releases](https://github.com/notquiteog/GridLauncher/releases), or the APK artifact of a successful [Actions build](https://github.com/notquiteog/GridLauncher/actions/workflows/android.yml). Enable installation from your browser/file manager when Android asks. In the launcher, open **Customize Start → Set as default home app**.
+Download **GridLauncher-Android17.apk** from [Releases](https://github.com/notquiteog/GridLauncher/releases), or the APK artifact of a successful [Actions build](https://github.com/notquiteog/GridLauncher/actions/workflows/android.yml). In **Customize Start**, select **Set as default home app**. Android requires the home role to expose app shortcuts.
 
-- Android 8.0 or later; compile and target SDK **37 / Android 17**.
-- Package: `io.github.notquiteog.gridlauncher`, separate from the original launcher.
-- Official fork builds use a persistent private release key, allowing in-place updates. Development/PR builds use a development signing key and cannot update an official build.
+- Android 8.0 or later; compile/target SDK **37 / Android 17**.
+- Package: `io.github.notquiteog.gridlauncher`.
+- Official releases use a persistent private signing key and support in-place updates. Development/PR builds have a different key.
 
-## What works
+## Start and editing
 
-- Start with small, medium and wide tiles, collision-free resizing, hold-and-drag rearrangement and directional movement. Hold and release a tile to edit or unpin it.
-- Real notification counts and rotating previews on pinned app tiles, plus aggregated folder counts. Enable Android notification access in Customize Start. Text previews are opt-in, remain in memory, and respect Android's private/secret notification visibility; no notification data is uploaded or written to backups.
-- Clock, upcoming calendar event, favorite contact names, and battery/charging tiles. Calendar and People request permission when opened and degrade gracefully when denied.
-- Photo tiles rotate through up to 20 pictures explicitly selected with Android's photo picker. No full photo-library permission.
-- Android widget hosting, including the system bind/configuration flow. Weather, music and other providers can supply real interactive content through their widgets.
-- Named app folders, searchable alphabetical app list, tap a letter to jump, app info, uninstall and Android dynamic/manifest shortcuts when selected as the default launcher.
-- Accent colors, light/dark backgrounds, square or rounded tiles, wallpaper transparency, optional labels and optional content rotation.
-- JSON layout backup/restore through Android's document picker. Restore confirms replacement, validates and repacks tiles, refreshes installed app metadata, and skips missing apps. Widgets/photos must be added again, and wallpaper chosen again after restore.
-- Edge-to-edge layout, system insets, Android home role selection, lifecycle-aware updates, and accessible text/actions.
+- Square, edge-to-edge glass tiles with no gaps. Choose **2–6 cells across**, default **3**. All positions and sizes use whole cells; existing 2.0 layouts migrate automatically.
+- **Long press** an app tile for its Android-published dynamic/manifest shortcuts and app info. These are actual app actions, not a layout-edit gesture. Apps decide which actions they provide.
+- Tap **Edit layout**, then a tile, to resize, move, remove or **Pin position**. Tap **Done** to leave editing. Movement uses whole-cell directions. Pinned positions are fixed anchors; removing a tile packs unpinned tiles into free spaces. Narrowing the grid refuses to displace a pinned tile that would no longer fit.
+- Tile/widget dimensions include **1×1, 1×2, 2×1, 2×2**, and larger whole-cell rectangles that fit the selected width. An Android widget's own content may need a larger size to be useful.
+- Personal, Work and Travel have separate persistent arrangements. Copy a layout with confirmation, or enable a weekday Work schedule with chosen hours (including overnight shifts). Manual selection disables scheduling. These are launcher layouts, not Android managed work profiles.
+- Spring movement/resizing and press feedback, perspective live-tile updates, animated Now expansion, native sheets and panoramic Start/app-list paging. Reduce motion, system animation settings and battery saver suppress decorative motion; battery saver also uses solid surfaces.
+- Frosted, Clear and Solid materials, wallpaper-derived tint, accent colors, light/dark themes, optional labels, and one-handed spacing. Dark app-list text is explicitly white.
 
-This is a launcher, not a replacement Android OS. It does not replace the lock screen, Android quick settings, navigation/recents, or the phone's default messaging apps. Windows services such as Cortana and Continuum are not implemented. Android notification counts are active notifications, not server unread counts; apps and Android can redact sensitive content. Weather/music use installed Android widgets rather than fabricated data. Work profiles and pinned deep shortcuts are not yet supported.
+## Live information and actions
 
-## Build locally
+Enable **Manage notification access** for counts. Turn on **Show notification previews** to display content, and use per-app preview controls to exclude individual apps.
 
-Install JDK 17, then:
+- Tiles show real notification titles, message text, artwork, counts, progress and available actions. Tap a count to expand the notification preview. MessagingStyle conversations include recent messages and sender identity. Direct reply is available only when the app publishes a RemoteInput action.
+- **Now** surfaces ongoing media, progress, navigation and timer notifications without rearranging pinned tiles. Finished/dismissed notifications disappear. Android 17 semantic annotations supply caution/urgent/safe labels and colors when the source app provides them.
+- Folder tiles aggregate counts and expand inline into live app tiles.
+- Clock, calendar, favorite People mosaics and battery/charging tiles. Calendar/favorites use optional read permissions; denial does not prevent using the launcher.
+- **Choose people** uses Android 17's contact picker (a phone picker fallback on older Android). Only selected names, numbers and emails are stored locally. Pin one person or a group; call/message/email through the appropriate Android app. Contact pictures appear for favorite contacts when contact access is granted; otherwise tiles show initials. Notification matching uses app-supplied person URIs, so it cannot reliably link every app's conversations.
+- Photo tiles rotate up to 20 photo-picker selections. Native Android widgets use the normal bind/configure flow.
+- Pin app destinations from **All apps → long press → Pin: shortcut**, or accept an app's Android pin request. Websites, geo links and documents can also be pinned in Customize Start.
+
+Notifications and PendingIntent action tokens are memory-only: never logged, uploaded or included in backups. Preview content/actions require opt-in and an unlocked device; per-app exclusions also apply. Secret notifications and group summaries are omitted. Android may redact data before delivery. Counts represent active notifications, not server unread counts.
+
+## Cross-device continuation
+
+On Android 17, **Continue Start on another device** opts the current activity into the public Handoff API. It transfers only the selected layout name; the receiving device opens its own matching layout. It requires compatible system support and GridLauncher on both devices.
+
+The public Android 17 SDK exposes activity Handoff publishing and restoration, but no general third-party-launcher feed of other apps' nearby activities. This project does not fake a nearby-app suggestion feed. Two-device transport still needs physical-device verification; tests cover the data contract. Sources: [Android Handoff](https://developer.android.com/develop/better-together/continue-on/enable-support), [contact picker](https://developer.android.com/about/versions/17/features/contact-picker).
+
+## Backup and limits
+
+Explicit JSON export backs up the current layout's portable app/built-in/folder tiles and appearance. Restore confirms replacement, validates, rehydrates installed apps and repacks. Device-bound widgets, selected contacts/photos, documents and pinned shortcuts must be selected again; wallpaper must be selected again. Automatic cloud/device backup is disabled to avoid copying contact snapshots and device-bound grants.
+
+A launcher cannot replace Android's lock screen, system quick settings, recents or third-party app UI. Cortana, Windows services and Continuum are not reproduced. Media/weather are sourced from notifications or installed widgets; no mock weather or fabricated activity is shipped.
+
+## Build
+
+Install JDK 17:
 
 ```sh
 export ANDROID_HOME="$HOME/Android/Sdk"
 scripts/setup-android.sh
-./gradlew testDebugUnitTest lintDebug assembleDebug
+./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+./gradlew assembleRelease
 ```
 
-Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
+APK paths: `app/build/outputs/apk/debug/app-debug.apk` and `app/build/outputs/apk/release/app-release.apk`.
 
-For release signing, set `SIGNING_KEYSTORE` to an absolute keystore path, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`, and `SIGNING_KEY_PASSWORD`, then run `./gradlew assembleRelease`. Without those variables a development key is used; do not distribute that as an official release.
+For official signing set `SIGNING_KEYSTORE`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_ALIAS`, and `SIGNING_KEY_PASSWORD`. Otherwise release uses the development key. Keep debug lint and release assembly as separate Gradle invocations due an AGP/Kotlin lint interaction.
 
-Toolchain: AGP 9.4.1, Gradle 9.6.0 (checksum verified), Kotlin 2.4.20, Java 17, Android SDK 37.0 and build tools 37.0.0. The legacy Kotlin/AGP DSL opt-outs remain for kapt/Hilt compatibility.
+Toolchain: AGP 9.4.1, Gradle 9.6.0 (checksum pinned), Kotlin 2.4.20, Java 17, Android SDK 37.0/build tools 37.0.0. Legacy Kotlin/AGP DSL opt-outs remain for kapt/Hilt compatibility.
 
-## CI and device testing
+## CI and tests
 
-Every push, pull request and manual dispatch runs unit tests, Android lint, APK builds, signature verification, and Android 17 emulator UI tests. The workflow also installs and launches the release APK, and uploads SHA-256 checksums, test reports, emulator logs and a screenshot. Failed device tests prevent publication of the installable artifact.
+Each push/PR/manual run executes unit tests, lint, APK builds, signature/alignment verification, and Android 17 emulator tests. A separate verifier requires every declared device test to produce a passing result, including cases where Gradle reports success despite installation failure. CI then installs/launches the signed release and uploads APK, checksum, reports, logs and screenshot. Successful pushes to `android-17-live-tiles` publish a GitHub Release.
 
-The repository's Actions secrets hold `APK_SIGNING_KEYSTORE` (base64) and `APK_SIGNING_PASSWORD`. The release alias is `gridlauncher`. Do not rotate these unless you intend to break in-place updates. Forks need their own signing secrets for push builds; pull requests build with a development key and do not receive secrets.
-
-Device tests cover home intent registration, app search/navigation, editing/persistence, live tile updates, and folder/settings UI. Unit tests cover collision-free placement across randomized moves/resizes, backup validation and migration, and notification replacement/removal.
+Actions secrets: `APK_SIGNING_KEYSTORE` (base64) and `APK_SIGNING_PASSWORD`, alias `gridlauncher`. Keep the signing identity for update compatibility. PRs use development signing and receive no secrets.
 
 ```sh
 scripts/setup-android.sh emulator
 scripts/emulator-test.sh
 ```
 
-The emulator script expects a previously built release APK and requires KVM on Linux. Hardware/OEM-specific behavior still needs testing on your phone.
+The script expects an already-built release APK and Linux KVM. Tests cover actual notification delivery and RemoteInput, privacy, semantic progress, white app-list text, dedicated edit/native-menu separation, pinning, column/profile persistence, Handoff payloads and core launcher flows. Unit tests exercise randomized packing, pinned anchors, compaction, migration, backup validation and schedules. OEM-specific rendering, performance and two-device Handoff still need hardware testing.

@@ -82,4 +82,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "android17-${{ github.run_number }}" dist/* --target "$GITHUB_SHA" --title "GridLauncher 2.0 · Android 17 · build ${{ github.run_number }}" --notes "Native live tiles, folders, widgets and personalization. Built, signature-verified, installed and UI-tested on Android 17 by GitHub Actions. See README for setup and supported features."
+          gh release create "android17-${{ github.run_number }}" dist/* --target "$GITHUB_SHA" --title "GridLauncher 2.1 · Android 17 · build ${{ github.run_number }}" --notes "Square glass tiles, Android app shortcuts, dedicated layout editing, pinned positions, rich notifications, People tiles and separate layouts. Built, signature-verified, installed and UI-tested on Android 17 by GitHub Actions. See README for setup and supported features."

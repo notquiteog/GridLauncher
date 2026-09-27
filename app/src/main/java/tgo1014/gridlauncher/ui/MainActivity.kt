@@ -33,11 +33,12 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updateAppListUseCase: UpdateAppListUseCase
     @Inject lateinit var appsManager: AppsManager
     @Inject lateinit var settingsRepository: tgo1014.gridlauncher.domain.SettingsRepository
+    @Inject lateinit var profiles: tgo1014.gridlauncher.data.LayoutProfiles
     private val backupJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     private val exportDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) lifecycleScope.launch {
             runCatching {
-                val backup = tgo1014.gridlauncher.live.LayoutBackup(tiles = appsManager.homeGridFlow.first(), settings = settingsRepository.tileSettingsFlow.first())
+                val backup = tgo1014.gridlauncher.live.LayoutBackup(tiles = appsManager.homeGridFlow.first().filter { it.contact == null && it.contacts.isEmpty() && it.destination == null && it.shortcutId == null && it.widgetId < 0 && it.photoUris.isEmpty() }, settings = settingsRepository.tileSettingsFlow.first())
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(backupJson.encodeToString(tgo1014.gridlauncher.live.LayoutBackup.serializer(), backup)) }
                         ?: error("Cannot write backup")
@@ -60,8 +61,8 @@ class MainActivity : ComponentActivity() {
                 val restored = backup.restore(appsManager.installedAppsFlow.first())
                 val previous = appsManager.homeGridFlow.first()
                 appsManager.setGrid(restored)
-                previous.filter { it.widgetId >= 0 }.forEach { widgetHost.deleteAppWidgetId(it.widgetId) }
-                settingsRepository.updateSettings(backup.settings.copy(wallpaperPath = null, cornerRadius = backup.settings.cornerRadius.coerceIn(0, 32)))
+                previous.filter { it.widgetId >= 0 }.forEach { if (!profiles.widgetInUse(it.widgetId)) widgetHost.deleteAppWidgetId(it.widgetId) }
+                settingsRepository.updateSettings(backup.settings.copy(wallpaperPath = null, cornerRadius = 0))
             }.onSuccess { message("Layout restored. Re-add photos and widgets if needed.") }.onFailure { message("Restore failed: ${it.message}") }
         }
     }
@@ -90,11 +91,47 @@ class MainActivity : ComponentActivity() {
                 .onFailure { cancelWidget(); message("This widget could not be configured") }
         } else finishWidget()
     }
+    private val pickContacts = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.data
+        if (result.resultCode == RESULT_OK && uri != null) lifecycleScope.launch {
+            runCatching { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { tgo1014.gridlauncher.live.ContactTiles.read(this@MainActivity, uri) } }
+                .onSuccess { contacts ->
+                    if (contacts.isNotEmpty()) {
+                        homeViewModel.addSpecialTile(GridItem(app = App(if (contacts.size == 1) contacts.first().name else "People", "grid://contacts"), width = 1,
+                            contact = contacts.singleOrNull(), contacts = contacts))
+                    }
+                }.onFailure { message("Could not read selected contacts") }
+        }
+    }
+    fun chooseContacts() { runCatching { pickContacts.launch(tgo1014.gridlauncher.live.ContactTiles.picker()) }.onFailure { message("The contact picker is unavailable on this device") } }
+    private val pickDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val name = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "Document"
+                homeViewModel.addSpecialTile(GridItem(app = App(name.take(80), "grid://destination"), width = 1, destination = uri.toString()))
+            }.onFailure { message("This document cannot be pinned") }
+        }
+    }
+    fun chooseDocument() { pickDocument.launch(arrayOf("*/*")) }
+    fun pinShortcut(app: App, shortcut: android.content.pm.ShortcutInfo) {
+        val launcher = getSystemService(android.content.pm.LauncherApps::class.java)
+        runCatching {
+            val existing = launcher.getShortcuts(android.content.pm.LauncherApps.ShortcutQuery().setPackage(app.packageName).setQueryFlags(android.content.pm.LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED), android.os.Process.myUserHandle()).orEmpty().map { it.id }
+            launcher.pinShortcuts(app.packageName, (existing + shortcut.id).distinct(), android.os.Process.myUserHandle())
+            homeViewModel.addSpecialTile(GridItem(app = app.copy(name = shortcut.shortLabel?.toString() ?: app.name), width = 1, shortcutId = shortcut.id))
+        }.onFailure { message("Set GridLauncher as your default home app to pin shortcuts") }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingWidget = savedInstanceState?.getInt("pendingWidget", -1) ?: -1
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
+        lifecycleScope.launch { settingsRepository.tileSettingsFlow.collect { settings ->
+            if (android.os.Build.VERSION.SDK_INT >= 37) setHandoffEnabled(settings.handoffEnabled, android.app.HandoffActivityParams.Builder().build())
+        } }
+        receiveHandoff(intent)
+        receivePinRequest(intent)
         setContent { GridLauncherTheme { HomeScreen(homeViewModel) } }
     }
     override fun onSaveInstanceState(outState: Bundle) { outState.putInt("pendingWidget", pendingWidget); super.onSaveInstanceState(outState) }
@@ -107,7 +144,34 @@ class MainActivity : ComponentActivity() {
     }
     override fun onStop() { unregisterReceiver(packageUpdates); widgetHost.stopListening(); super.onStop() }
     override fun onResume() { super.onResume(); lifecycleScope.launch { updateAppListUseCase() } }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveHandoff(intent); receivePinRequest(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
+
+    private fun receivePinRequest(intent: Intent?) {
+        if (intent?.action != android.content.pm.LauncherApps.ACTION_CONFIRM_PIN_SHORTCUT) return
+        val launcher = getSystemService(android.content.pm.LauncherApps::class.java)
+        val request = launcher.getPinItemRequest(intent) ?: return
+        val shortcut = request.shortcutInfo ?: return
+        if (!request.isValid) return
+        android.app.AlertDialog.Builder(this).setTitle("Pin ${shortcut.shortLabel}?")
+            .setMessage("Add this app destination to your current Start layout.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Pin") { _, _ ->
+                runCatching {
+                    if (request.accept()) lifecycleScope.launch {
+                        val app = appsManager.installedAppsFlow.first().firstOrNull { it.packageName == shortcut.`package` }
+                            ?: App(shortcut.shortLabel?.toString() ?: "Shortcut", shortcut.`package`)
+                        homeViewModel.addSpecialTile(GridItem(app = app.copy(name = shortcut.shortLabel?.toString() ?: app.name), width = 1, shortcutId = shortcut.id))
+                    }
+                }.onFailure { message("This shortcut is no longer available") }
+            }.show()
+    }
+
+    @androidx.annotation.RequiresApi(37)
+    override fun onHandoffActivityDataRequested(requestInfo: android.app.HandoffActivityDataRequestInfo): android.app.HandoffActivityData =
+        android.app.HandoffActivityData.Builder(android.content.ComponentName(this, MainActivity::class.java))
+            .setExtras(android.os.PersistableBundle().apply { putString("grid.profile", homeViewModel.stateFlow.value.profile) }).build()
+    private fun receiveHandoff(intent: Intent?) {
+        intent?.getStringExtra("grid.profile")?.takeIf { it in tgo1014.gridlauncher.data.profileNames }?.let { name -> homeViewModel.selectProfile(name) }
+    }
 
     fun chooseDefaultLauncher() {
         if (android.os.Build.VERSION.SDK_INT >= 29) {
@@ -133,8 +197,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val grid = appsManager.homeGridFlow.first()
             val tile = GridItem(id = (grid.maxOfOrNull { it.id } ?: -1) + 1,
-                app = App(info.loadLabel(packageManager), BuiltInTiles.WIDGET), width = 4, height = 2, widgetId = id)
-            appsManager.setGrid(grid + GridPlacement.place(tile, grid))
+                app = App(info.loadLabel(packageManager), BuiltInTiles.WIDGET), width = 2, height = 1, widgetId = id)
+            appsManager.setGrid(grid + GridPlacement.place(tile, grid, settingsRepository.tileSettingsFlow.first().gridColumns))
         }
     }
     private fun message(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()

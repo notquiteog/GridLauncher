@@ -20,6 +20,8 @@ adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
 ./gradlew connectedDebugAndroidTest --stacktrace
+# AGP can report a successful task even when APK installation prevented any tests.
+python3 scripts/verify-device-tests.py
 # Also install and launch the actual downloadable signed APK.
 # AGP can already have uninstalled the test target during test cleanup.
 if [[ "$(adb shell pm path io.github.notquiteog.gridlauncher)" == package:* ]]; then

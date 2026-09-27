@@ -26,7 +26,15 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun updateSettings(tileSettings: TileSettings) {
         dataStore.edit {
-            it[key] = json.encodeToString(tileSettings)
+            migrateStoredGrids(it, json)
+            val safe = tileSettings.copy(tilesAcross = tileSettings.tilesAcross.coerceIn(2, 6), cornerRadius = 0)
+            val old = runCatching { json.decodeFromString<TileSettings>(it[key]!!) }.getOrDefault(TileSettings())
+            if (old.gridColumns != safe.gridColumns) profileNames.forEach { name ->
+                val gridKey = profileGridKey(name)
+                val grid = runCatching { json.decodeFromString<List<tgo1014.gridlauncher.ui.models.GridItem>>(it[gridKey]!!) }.getOrDefault(emptyList())
+                if (it[gridKey] != null) it[gridKey] = json.encodeToString(tgo1014.gridlauncher.domain.GridPlacement.reflow(grid, safe.gridColumns))
+            }
+            it[key] = json.encodeToString(safe)
         }
     }
 }
