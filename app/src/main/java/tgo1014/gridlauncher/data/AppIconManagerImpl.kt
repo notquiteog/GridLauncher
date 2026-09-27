@@ -30,6 +30,12 @@ class AppIconManagerImpl @Inject constructor(
                 it != file && (it.name.startsWith(prefix) || it.name == "${packageName}_icon.png" || it.name == "${packageName}_bg.png")
             }?.forEach { it.delete() }
         }
-        Icon(iconFilePath = file.absolutePath)
+        val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+        val edgeColor = bitmap?.let {
+            val pixels = IntArray(it.width * it.height)
+            it.getPixels(pixels, 0, it.width, 0, 0, it.width, it.height)
+            iconEdgeColor(pixels, it.width, it.height).also { _ -> bitmap.recycle() }
+        }
+        Icon(iconFilePath = file.absolutePath, edgeColor = edgeColor)
     }
 }

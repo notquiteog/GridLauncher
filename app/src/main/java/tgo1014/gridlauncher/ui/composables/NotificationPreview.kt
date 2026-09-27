@@ -24,14 +24,14 @@ fun semanticLabel(style: Int) = when (style) { 2 -> "Safe"; 3 -> "Caution"; 4 ->
 fun semanticColor(style: Int, fallback: Color) = when (style) { 2 -> Color(0xFF64D9A2); 3 -> Color(0xFFFFC66D); 4 -> Color(0xFFFF8390); else -> fallback }
 
 @Composable
-fun LiveProgress(n: TileNotification, modifier: Modifier = Modifier) {
-    val color = semanticColor(n.semantic, LocalGlass.current.accent)
+fun LiveProgress(n: TileNotification, modifier: Modifier = Modifier, ink: Color? = null) {
+    val color = semanticColor(n.semantic, ink ?: LocalGlass.current.accent)
     if (n.indeterminate) LinearProgressIndicator(modifier.fillMaxWidth(), color = color)
-    else if (n.progressMax > 0) LinearProgressIndicator(progress = { (n.progress.toFloat() / n.progressMax).coerceIn(0f, 1f) }, modifier.fillMaxWidth(), color = color, trackColor = LocalGlass.current.ink.copy(alpha = .15f))
+    else if (n.progressMax > 0) LinearProgressIndicator(progress = { (n.progress.toFloat() / n.progressMax).coerceIn(0f, 1f) }, modifier.fillMaxWidth(), color = color, trackColor = (ink ?: LocalGlass.current.ink).copy(alpha = .15f))
 }
 
 @Composable
-fun NotificationActions(n: TileNotification, compact: Boolean = false) {
+fun NotificationActions(n: TileNotification, compact: Boolean = false, ink: Color = LocalGlass.current.ink) {
     val context = LocalContext.current
     val glass = LocalGlass.current
     var replying by remember(n.key) { mutableStateOf<android.app.Notification.Action?>(null) }
@@ -43,7 +43,7 @@ fun NotificationActions(n: TileNotification, compact: Boolean = false) {
             TextButton(onClick = {
                 if (action.remoteInputs?.any { it.allowFreeFormInput } == true) replying = action
                 else { result = if (NotificationTiles.act(context, n.key, action)) "Action sent" else "Action unavailable"; Toast.makeText(context, result, Toast.LENGTH_SHORT).show() }
-            }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.weight(1f)) { Text(action.title.toString(), fontSize = 12.sp, color = glass.ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.weight(1f)) { Text(action.title.toString(), fontSize = 12.sp, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
     if (replying != null) AlertDialog(onDismissRequest = { replying = null; reply = "" }, title = { Text("Reply") }, text = {

@@ -2,6 +2,7 @@ package tgo1014.gridlauncher
 
 import android.content.Intent
 import androidx.compose.ui.test.*
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
@@ -43,6 +44,36 @@ class LauncherTest {
         assertNull(icon.bgFilePath)
         assertTrue("Keep the app's complete default icon, including adaptive background", expected.sameAs(cached))
     }
+    @Test fun flatTileColorsAndLabelsKeepContrastInDarkMode() {
+        seed(listOf(
+            GridItem(1, App("Light tile", "grid://light-test", tgo1014.gridlauncher.domain.models.Icon(edgeColor = 0xFFFFFFFFL)), 1),
+            GridItem(2, App("Dark tile", "grid://dark-test", tgo1014.gridlauncher.domain.models.Icon(edgeColor = 0xFF003366L)), 1, x = 1)
+        ))
+        listOf("Light tile" to androidx.compose.ui.graphics.Color.White, "Dark tile" to androidx.compose.ui.graphics.Color(0xFF003366)).forEach { (name, background) ->
+            val image = compose.onNodeWithContentDescription(name).captureToImage().toPixelMap()
+            assertEquals("Flat color reaches the square corners", background, image[2, 2])
+            assertEquals("No gradient or glass border", background, image[image.width - 3, 2])
+            val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            compose.onNodeWithText(name, useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(results) }
+            assertEquals(if (name == "Light tile") androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White, results.single().layoutInput.style.color)
+        }
+    }
+    @Test fun updaterRejectsInstalledVersionAndOnlySharesItsOwnCachePath() {
+        val context = compose.activity
+        assertThrows(IllegalArgumentException::class.java) {
+            tgo1014.gridlauncher.updates.verifyApk(context.packageManager, context.packageName,
+                java.io.File(context.applicationInfo.sourceDir), BuildConfig.VERSION_CODE.toLong())
+        }
+        val file = java.io.File(context.cacheDir, "updates/provider-test.apk").apply { parentFile!!.mkdirs(); writeText("provider check") }
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.updates", file)
+            assertEquals("content", uri.scheme)
+            assertEquals("provider check", context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() })
+            assertThrows(IllegalArgumentException::class.java) {
+                androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.updates", java.io.File(context.filesDir, "private-data"))
+            }
+        } finally { file.delete() }
+    }
     @Test fun homeIntentAndAppDrawerWork() {
         val context = compose.activity
         val homes = context.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
@@ -77,7 +108,11 @@ class LauncherTest {
         seed(listOf(GridItem(1, App("Settings", "com.android.settings"), 2, height = 1)))
         runBlocking { compose.activity.settingsRepository.updateSettings(TileSettings(showNotificationText = true)) }
         NotificationTiles.post(TileNotification("message", "com.android.settings", "Hello from Android", "A real tile update", 1))
-        compose.waitUntil(5000) { compose.onAllNodesWithText("Hello from Android").fetchSemanticsNodes().isNotEmpty() }
+        try { compose.waitUntil(5000) { compose.onAllNodesWithText("Hello from Android").fetchSemanticsNodes().isNotEmpty() } }
+        catch (failure: Throwable) {
+            compose.onRoot().printToLog("TileTest")
+            throw AssertionError("Preview state: notifications=${NotificationTiles.notifications.value}, settings=${runBlocking { compose.activity.settingsRepository.tileSettingsFlow.first() }}, grid=${runBlocking { compose.activity.appsManager.homeGridFlow.first() }}, locked=${compose.activity.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked}", failure)
+        }
         compose.onNodeWithText("A real tile update").assertIsDisplayed()
         compose.onNodeWithContentDescription("Settings, 1 notifications").assertIsDisplayed()
         NotificationTiles.remove("message")
@@ -99,7 +134,15 @@ class LauncherTest {
             compose.waitUntil(15000) { NotificationTiles.notifications.value.any { it.packageName == "com.android.shell" && it.key.contains(tag) } }
             assertTrue(NotificationTiles.notifications.value.first { it.key.contains(tag) }.time > 0)
             compose.onNodeWithContentDescription("Clock").assertIsDisplayed()
-        } finally { shell("cmd notification disallow_listener $component"); NotificationTiles.replace(emptyList()) }
+        } finally {
+            shell("cmd notification disallow_listener $component")
+            compose.waitUntil(10000) {
+                @Suppress("DEPRECATION")
+                compose.activity.getSystemService(android.app.ActivityManager::class.java).getRunningServices(100).none { it.service.className == LiveNotificationService::class.java.name }
+            }
+            compose.waitForIdle()
+            NotificationTiles.replace(emptyList())
+        }
     }
     @Test fun longPressShowsAppActionsAndMovementRequiresExplicitEditMode() {
         seed(listOf(GridItem(1, App("Settings", "com.android.settings"), 1)))

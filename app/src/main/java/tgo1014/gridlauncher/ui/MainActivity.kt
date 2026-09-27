@@ -34,6 +34,24 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var appsManager: AppsManager
     @Inject lateinit var settingsRepository: tgo1014.gridlauncher.domain.SettingsRepository
     @Inject lateinit var profiles: tgo1014.gridlauncher.data.LayoutProfiles
+    val updater: tgo1014.gridlauncher.updates.GitHubUpdater by viewModels()
+    private val allowUpdates = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (packageManager.canRequestPackageInstalls()) installGitHubUpdate()
+    }
+    fun installGitHubUpdate() {
+        if (!updater.eligible) return
+        val apk = updater.state.value.apk ?: return
+        if (!packageManager.canRequestPackageInstalls()) {
+            runCatching { allowUpdates.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:$packageName"))) }
+                .onFailure { message("Allow installs from GridLauncher in Android settings, then try again.") }
+            return
+        }
+        runCatching {
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.updates", apk)
+            startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        }.onFailure { message("Android could not open the package installer.") }
+    }
     private val backupJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     private val exportDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) lifecycleScope.launch {
@@ -132,7 +150,7 @@ class MainActivity : ComponentActivity() {
         } }
         receiveHandoff(intent)
         receivePinRequest(intent)
-        setContent { GridLauncherTheme { HomeScreen(homeViewModel) } }
+        setContent { GridLauncherTheme { HomeScreen(homeViewModel); tgo1014.gridlauncher.updates.UpdatePrompt(updater, this) } }
     }
     override fun onSaveInstanceState(outState: Bundle) { outState.putInt("pendingWidget", pendingWidget); super.onSaveInstanceState(outState) }
     override fun onStart() {
@@ -143,7 +161,7 @@ class MainActivity : ComponentActivity() {
         androidx.core.content.ContextCompat.registerReceiver(this, packageUpdates, filter, androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
     }
     override fun onStop() { unregisterReceiver(packageUpdates); widgetHost.stopListening(); super.onStop() }
-    override fun onResume() { super.onResume(); lifecycleScope.launch { updateAppListUseCase() } }
+    override fun onResume() { super.onResume(); updater.check(); lifecycleScope.launch { updateAppListUseCase() } }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveHandoff(intent); receivePinRequest(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
 
     private fun receivePinRequest(intent: Intent?) {

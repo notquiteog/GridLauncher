@@ -20,6 +20,9 @@ android {
         targetSdk = 37
         versionCode = 21000 + (providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 0)
         versionName = "2.1.0"
+        val distribution = providers.gradleProperty("distributionChannel").orElse("github").get()
+        require(distribution in listOf("github", "play"))
+        buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"$distribution\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -48,12 +51,17 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+    if (providers.gradleProperty("distributionChannel").orNull == "play") {
+        sourceSets.getByName("debug").manifest.srcFile("src/play/AndroidManifest.xml")
+        sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures.compose = true
+    buildFeatures.buildConfig = true
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

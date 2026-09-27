@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -81,6 +83,8 @@ fun GridTile(
 ) {
     val context = LocalContext.current
     val glass = LocalGlass.current
+    val tileColor = Color(item.app.icon.edgeColor ?: tileSettings.accentColor).copy(alpha = 1f)
+    val tileInk = if (item.photoUris.isNotEmpty() || tileColor.luminance() <= .179f) Color.White else Color.Black
     var showNativeActions by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
     var showPeople by remember { mutableStateOf(false) }
@@ -121,7 +125,7 @@ fun GridTile(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(if (pressed && glass.motion) .965f else 1f, if (glass.motion) spring(dampingRatio = .75f, stiffness = 650f) else snap(), label = "Tile press")
-    BoxWithConstraints(modifier = modifier.graphicsLayer { scaleX = pressScale; scaleY = pressScale }.glassSurface(hazeState)
+    BoxWithConstraints(modifier = modifier.graphicsLayer { scaleX = pressScale; scaleY = pressScale }.clip(RectangleShape).background(tileColor)
         .semantics { contentDescription = item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = listOf(CustomAccessibilityAction(if (isEditMode) "Edit tile" else "App shortcuts") { if (isEditMode) onItemLongClicked(item) else showNativeActions = true; true }, CustomAccessibilityAction("Preview notifications") { showPreview = true; true }) }
         .combinedClickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = { if (isEditMode) onItemClicked(item) else open() }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); if (isEditMode) onItemLongClicked(item) else showNativeActions = true })) {
         if (item.widgetId >= 0) {
@@ -134,8 +138,8 @@ fun GridTile(
                     AndroidView(factory = { activity.widgetHost.createView(it, item.widgetId, info) },
                         update = { it.updateAppWidgetSize(null, w, h, w, h) }, modifier = Modifier.fillMaxSize())
                 }
-                TextButton(onClick = { if (isEditMode) onItemLongClicked(item) else showNativeActions = true }, modifier = Modifier.align(Alignment.TopEnd)) { Text("Actions", color = glass.ink) }
-            } else Text("Widget unavailable\nRemove in Edit layout", color = glass.ink, modifier = Modifier.padding(12.dp))
+                TextButton(onClick = { if (isEditMode) onItemLongClicked(item) else showNativeActions = true }, modifier = Modifier.align(Alignment.TopEnd)) { Text("Actions", color = tileInk) }
+            } else Text("Widget unavailable\nRemove in Edit layout", color = tileInk, modifier = Modifier.padding(12.dp))
         } else {
             if (item.photoUris.isNotEmpty()) {
                 Crossfade(targetState = if (tileSettings.liveTilesEnabled) page.mod(item.photoUris.size) else 0, label = "Photo tile") { index ->
@@ -145,30 +149,23 @@ fun GridTile(
             }
             val expanded = maxWidth >= 86.dp && maxHeight >= 86.dp
             val preview = matching.getOrNull(page.mod(matching.size.coerceAtLeast(1)))
-            val art by produceState<android.graphics.Bitmap?>(null, preview?.key, preview?.artworkIcon) {
-                value = withContext(Dispatchers.IO) { preview?.artwork ?: runCatching { preview?.artworkIcon?.loadDrawable(context)?.toBitmap(192,192) }.getOrNull() }
-            }
-            if (!locked && tileSettings.showNotificationText && preview?.packageName !in tileSettings.hiddenPreviewApps && art != null) {
-                Image(art!!.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                Box(Modifier.fillMaxSize().background(if (tileSettings.darkTheme) Color.Black.copy(alpha = .70f) else Color.White.copy(alpha = .85f)))
-            }
             val live = if (!locked && tileSettings.showNotificationText && preview?.packageName !in tileSettings.hiddenPreviewApps && preview?.title?.isNotBlank() == true)
                 preview.title to preview.text else detail
             if (expanded && live != null && people.isEmpty() && item.children.isEmpty()) {
                 TileTurn(key = live, modifier = Modifier.fillMaxSize().padding(12.dp).padding(bottom = if (preview?.actions?.isNotEmpty() == true && item.width >= 2) 60.dp else 24.dp)) {
                     val content = live
                     Column(verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
-                        Text(content.first, color = glass.ink, fontSize = if (item.app.packageName == BuiltInTiles.CLOCK || item.app.packageName == BuiltInTiles.BATTERY) 32.sp else 20.sp,
+                        Text(content.first, color = tileInk, fontSize = if (item.app.packageName == BuiltInTiles.CLOCK || item.app.packageName == BuiltInTiles.BATTERY) 32.sp else 20.sp,
                             fontWeight = FontWeight.Light, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(content.second, color = glass.ink, fontSize = 13.sp, maxLines = if (item.width >= 2) 3 else 2, overflow = TextOverflow.Ellipsis)
+                        Text(content.second, color = tileInk, fontSize = 13.sp, maxLines = if (item.width >= 2) 3 else 2, overflow = TextOverflow.Ellipsis)
                         if (preview != null && live == (preview.title to preview.text)) {
-                            if (preview.semantic > 0) Text(semanticLabel(preview.semantic), color = glass.ink, fontSize = 11.sp)
-                            LiveProgress(preview, Modifier.padding(top = 5.dp))
+                            if (preview.semantic > 0) Text(semanticLabel(preview.semantic), color = tileInk, fontSize = 11.sp)
+                            LiveProgress(preview, Modifier.padding(top = 5.dp), ink = tileInk)
                         }
                     }
                 }
             } else if (people.isNotEmpty()) {
-                PeopleMosaic(people, page, Modifier.fillMaxSize().padding(bottom = 24.dp))
+                PeopleMosaic(people, page, Modifier.fillMaxSize().padding(bottom = 24.dp), ink = tileInk)
             } else if (item.children.isNotEmpty()) {
                 val folderIconSize = (minOf(maxWidth, maxHeight) * .31f).coerceAtMost(64.dp)
                 Column(Modifier.align(Alignment.Center).padding(14.dp)) {
@@ -176,29 +173,29 @@ fun GridTile(
                         row.forEach { app -> Box {
                             AsyncImage(app.icon.iconFile, Modifier.size(folderIconSize))
                             val count = matching.count { it.packageName == app.packageName }
-                            if (count > 0) Text(count.toString(), color = glass.ink, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).background(glass.accent))
+                            if (count > 0) Text(count.toString(), color = tileInk, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).background(glass.accent))
                         } }
                     } }
                 }
             } else if (item.photoUris.isEmpty()) {
                 if (builtIn) Text(when (item.app.packageName) { BuiltInTiles.CLOCK -> "◷"; BuiltInTiles.CALENDAR -> java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH).toString(); BuiltInTiles.PEOPLE -> "● ●"; BuiltInTiles.BATTERY -> "▰"; else -> "▦" },
-                    color = glass.ink, fontSize = if (expanded) 38.sp else 22.sp, modifier = Modifier.align(Alignment.Center))
+                    color = tileInk, fontSize = if (expanded) 38.sp else 22.sp, modifier = Modifier.align(Alignment.Center))
                 else {
                     val iconSize = minOf(maxWidth * .72f, maxHeight - if (tileSettings.isAppLabelsHidden) 12.dp else 32.dp).coerceAtLeast(24.dp)
                     AsyncImage(item.app.icon.iconFile, Modifier.align(Alignment.Center).offset(y = if (tileSettings.isAppLabelsHidden) 0.dp else (-8).dp).size(iconSize))
                 }
             }
             if (expanded && !locked && tileSettings.showNotificationText && preview != null && preview.packageName !in tileSettings.hiddenPreviewApps && maxWidth >= 180.dp && preview.actions.isNotEmpty()) {
-                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(preview, compact = true) }
+                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(preview, compact = true, ink = tileInk) }
             }
-            if (!tileSettings.isAppLabelsHidden) Text(item.app.name, color = glass.ink, fontSize = if (expanded) 13.sp else 11.sp, maxLines = 1,
+            if (!tileSettings.isAppLabelsHidden) Text(item.app.name, color = tileInk, fontSize = if (expanded) 13.sp else 11.sp, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (expanded) 10.dp else 3.dp).padding(end = if (matching.isNotEmpty()) 26.dp else 0.dp))
-            if (matching.isNotEmpty()) Text(if (matching.size > 99) "99+" else matching.size.toString(), color = glass.ink, fontSize = if (expanded) 24.sp else 16.sp,
+            if (matching.isNotEmpty()) Text(if (matching.size > 99) "99+" else matching.size.toString(), color = tileInk, fontSize = if (expanded) 24.sp else 16.sp,
                 modifier = Modifier.align(Alignment.BottomEnd).sizeIn(minWidth = 44.dp, minHeight = 44.dp).clickable { showPreview = true }.padding(6.dp))
         }
         if (isEditMode) {
             Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = .12f)).clickable { onItemClicked(item) })
-            if (item.positionPinned) Text("Pinned", color = glass.ink, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = .6f)).padding(3.dp))
+            if (item.positionPinned) Text("Pinned", color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = .6f)).padding(3.dp))
         }
         NativeTileActions(item, showNativeActions, { showNativeActions = false }, { open() })
     }

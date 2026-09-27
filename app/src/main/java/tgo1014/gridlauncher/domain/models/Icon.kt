@@ -10,6 +10,7 @@ import java.io.File
 data class Icon(
     val iconFilePath: String? = null,
     val bgFilePath: String? = null,
+    val edgeColor: Long? = null,
 ) {
     val iconFile: File? get() = iconFilePath?.let { File(it) }
     val bgFile: File? get() = bgFilePath?.let { File(it) }

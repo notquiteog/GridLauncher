@@ -19,14 +19,14 @@ import tgo1014.gridlauncher.ui.theme.AsyncImage
 import tgo1014.gridlauncher.ui.theme.LocalGlass
 
 @Composable
-fun PeopleMosaic(people: List<PinnedContact>, page: Int, modifier: Modifier = Modifier) {
+fun PeopleMosaic(people: List<PinnedContact>, page: Int, modifier: Modifier = Modifier, ink: androidx.compose.ui.graphics.Color = LocalGlass.current.ink) {
     val glass = LocalGlass.current
     val shown = if (people.isEmpty()) emptyList() else (0 until minOf(4, people.size)).map { people[(page + it) % people.size] }
     Column(modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         shown.chunked(2).forEach { row -> Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             row.forEach { person -> Box(Modifier.weight(1f).fillMaxHeight().clip(CircleShape).background(glass.accent.copy(alpha = .25f)), contentAlignment = Alignment.Center) {
                 if (person.photo != null) AsyncImage(person.photo, Modifier.fillMaxSize())
-                else Text(person.name.split(" ").filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }, color = glass.ink, fontSize = 20.sp)
+                else Text(person.name.split(" ").filter { it.isNotEmpty() }.take(2).joinToString("") { it.take(1) }, color = ink, fontSize = 20.sp)
             } }
         } }
     }

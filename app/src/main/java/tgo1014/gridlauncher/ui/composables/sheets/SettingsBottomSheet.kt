@@ -57,7 +57,13 @@ fun SettingsBottomSheet(
             Text("Make it yours", style = MaterialTheme.typography.headlineLarge)
             Text("Start, with a personal touch.", style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = { activity?.chooseDefaultLauncher() }) { Text("Set as default home app") }
-            Text("Glass", style = MaterialTheme.typography.titleMedium)
+            if (activity?.updater?.eligible == true) {
+                val updateState by activity.updater.state.collectAsState()
+                val autoUpdates by activity.updater.automatic.collectAsState()
+                TextButton(enabled = !updateState.checking && !updateState.downloading, onClick = { activity.updater.check(manual = true) }) { Text(if (updateState.checking) "Checking GitHub…" else "Check for updates") }
+                SettingSwitch("Check GitHub automatically", autoUpdates, activity.updater::setAutomatic)
+            } else Text("Updates are managed by your app store.", style = MaterialTheme.typography.bodySmall)
+            Text("Glass controls", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("frosted", "clear", "solid").forEach { finish -> FilterChip(selected = tileSettings.glassFinish == finish, onClick = { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(glassFinish = finish))) }, label = { Text(finish.replaceFirstChar { it.uppercase() }) }) }
             }
