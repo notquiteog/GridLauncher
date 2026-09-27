@@ -89,5 +89,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "android17-${{ github.run_number }}" dist/* --draft --target "$GITHUB_SHA" --title "GridLauncher 2.1 · Android 17 · build ${{ github.run_number }}" --notes "Flat icon-colored square tiles, larger default Android icons, compact header, verified GitHub self-updates, Android app shortcuts, dedicated layout editing, pinned positions, rich notifications, People tiles and separate layouts. Built, signature-verified, installed and UI-tested on Android 17 by GitHub Actions. See README for setup and supported features."
+          gh release create "android17-${{ github.run_number }}" dist/* --draft --target "$GITHUB_SHA" --title "GridLauncher 2.1 · Android 17 · build ${{ github.run_number }}" --notes "Flat icon-colored square tiles, larger default Android icons, minimal Home with controls in All apps, verified GitHub self-updates, Android app shortcuts, dedicated layout editing, pinned positions, rich notifications, People tiles and separate layouts. Built, signature-verified, installed and UI-tested on Android 17 by GitHub Actions. See README for setup and supported features."
           gh release edit "android17-${{ github.run_number }}" --draft=false

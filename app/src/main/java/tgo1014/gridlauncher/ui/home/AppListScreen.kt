@@ -16,6 +16,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import tgo1014.gridlauncher.ui.models.SettingsEvent
+import tgo1014.gridlauncher.data.profileNames
+import tgo1014.gridlauncher.ui.theme.LocalGlass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +37,7 @@ import tgo1014.gridlauncher.ui.theme.AsyncImage
 fun AppListScreen(
     state: HomeState, hazeState: HazeState = remember { HazeState() }, onAppClicked: (App) -> Unit = {},
     onAddToGrid: (App) -> Unit = {}, onFilterTextChanged: (String) -> Unit = {},
+    onSettingsEvent: (SettingsEvent) -> Unit = {}, onProfile: (String) -> Unit = {}, onEditLayout: (Boolean) -> Unit = {},
     onFilterClearPressed: () -> Unit = {}, onUninstall: (App) -> Unit = {}, onBackPressed: () -> Unit = {}, onFabClosed: () -> Unit = {},
 ) {
     BackHandler(onBack = onBackPressed)
@@ -46,6 +52,17 @@ fun AppListScreen(
     CompositionLocalProvider(LocalContentColor provides ink) {
     Column(Modifier.fillMaxSize().background(background).systemBarsPadding().imePadding().padding(horizontal = 20.dp)) {
         if (state.tileSettings.oneHanded) Spacer(Modifier.height(80.dp))
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(java.util.Locale.getDefault(), "EEEMMMd"), java.util.Locale.getDefault()).format(java.util.Date()),
+                color = ink, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onEditLayout(!state.isEditingLayout) }) { Text(if (state.isEditingLayout) "Done" else "Edit layout", color = ink) }
+            IconButton(onClick = { onSettingsEvent(SettingsEvent.OnSettingsIconClicked) }) { Icon(Icons.Default.Settings, "Customize Start", tint = ink) }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            profileNames.forEach { name -> FilterChip(selected = state.profile == name, onClick = { onProfile(name) }, label = { Text(name) },
+                colors = FilterChipDefaults.filterChipColors(containerColor = Color.Transparent, selectedContainerColor = LocalGlass.current.accent.copy(alpha = .22f), labelColor = ink, selectedLabelColor = ink)) }
+        }
+        NowArea(hazeState)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("All apps", color = ink, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
             TextButton(onClick = onBackPressed) { Text("Start ←") }

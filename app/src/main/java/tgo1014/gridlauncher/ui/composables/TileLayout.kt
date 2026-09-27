@@ -26,8 +26,10 @@ fun TileLayout(
     editingLayout: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(0.dp), isOnTop: (Boolean) -> Unit = {},
     onItemClicked: (GridItem) -> Unit = {}, onItemDropped: (GridItem, Int, Int) -> Unit = { _, _, _ -> },
-    onItemLongClicked: (GridItem) -> Unit = {}, footer: @Composable (Modifier) -> Unit = {},
+    onItemLongClicked: (GridItem) -> Unit = {},
 ) = BoxWithConstraints(modifier) {
+    // LazyTable requires at least one item; an empty profile is intentionally blank.
+    if (grid.isEmpty()) return@BoxWithConstraints
     val motion = LocalGlass.current.motion
     val unit = maxWidth / columns
     val pixels = with(LocalDensity.current) { unit.toPx() }
@@ -65,7 +67,5 @@ fun TileLayout(
                 }
             }
         }
-        val end = (grid.maxOfOrNull { it.y + it.height } ?: 0) + folderRows
-        items(count = 1, layoutInfo = { LazyTableItem(column = 0, row = end, columnsCount = columns, rowsCount = 1) }) { footer(Modifier) }
     }
 }

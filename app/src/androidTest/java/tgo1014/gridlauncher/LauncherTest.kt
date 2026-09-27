@@ -74,6 +74,20 @@ class LauncherTest {
             }
         } finally { file.delete() }
     }
+    @Test fun homeIsMinimalAndAllAppsOwnsLayoutControls() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        compose.onNodeWithText("Edit layout").assertDoesNotExist()
+        compose.onNodeWithText("Personal").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Customize Start").assertDoesNotExist()
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Customize Start").assertIsDisplayed()
+        compose.onNodeWithText("Work").performClick()
+        compose.waitUntil(5000) { runBlocking { compose.activity.profiles.active.first() == "Work" } }
+        compose.onNodeWithText("Edit layout").assertDoesNotExist()
+        compose.onNodeWithText("Work").assertDoesNotExist()
+        compose.onNodeWithText("All apps").assertIsDisplayed()
+    }
     @Test fun homeIntentAndAppDrawerWork() {
         val context = compose.activity
         val homes = context.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
@@ -88,6 +102,7 @@ class LauncherTest {
     }
     @Test fun tileResizeMoveAndUnpinPersist() {
         seed(listOf(GridItem(1, App("Battery", BuiltInTiles.BATTERY), 1)))
+        compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithText("Edit layout").performClick()
         compose.onNodeWithContentDescription("Battery").performClick()
         compose.onNodeWithText("2×1").performClick()
@@ -151,6 +166,7 @@ class LauncherTest {
         compose.onNodeWithText("Move tile").assertDoesNotExist()
         assertEquals(0, runBlocking { compose.activity.appsManager.homeGridFlow.first().single().x })
         androidx.test.espresso.Espresso.pressBack()
+        compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithText("Edit layout").performClick()
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.onNodeWithText("Edit tile").assertIsDisplayed()
@@ -166,6 +182,7 @@ class LauncherTest {
         compose.onNodeWithContentDescription("Favorites").performClick()
         compose.onNodeWithText("Settings").assertIsDisplayed()
         compose.onNodeWithText("Close").performClick()
+        compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithContentDescription("Customize Start").performClick()
         compose.onNodeWithText("Make it yours").assertIsDisplayed()
         compose.onNodeWithText("Live tiles").assertIsDisplayed()
@@ -249,6 +266,8 @@ class LauncherTest {
         seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
         runBlocking { compose.activity.settingsRepository.updateSettings(TileSettings(showNotificationText = true)) }
         NotificationTiles.post(TileNotification("ride", "com.android.settings", "Ride arriving", "4 minutes", System.currentTimeMillis(), ongoing = true, progressMax = 100, progress = 60))
+        compose.onNodeWithText("Now").assertDoesNotExist()
+        compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithText("Now").assertIsDisplayed()
         compose.onNodeWithText("Ride arriving").assertIsDisplayed()
         NotificationTiles.remove("ride")
@@ -277,6 +296,7 @@ class LauncherTest {
             assertTrue(manager.bindAppWidgetIdIfAllowed(id, provider.provider))
             automation.dropShellPermissionIdentity()
             seed(listOf(GridItem(81, App("Test widget", BuiltInTiles.WIDGET), 1, widgetId = id)))
+            compose.onNodeWithText("All apps").performClick()
             compose.onNodeWithText("Edit layout").performClick()
             compose.onNodeWithContentDescription("Test widget").performClick()
             for ((w,h) in listOf(1 to 2, 2 to 1, 2 to 2, 1 to 1)) {

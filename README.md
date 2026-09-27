@@ -18,12 +18,12 @@ The updater checks Android's installing/initiating package and update owner; Pla
 
 ## Start and editing
 
-- Compact top bar with the date, Edit layout and settings in one row.
+- Home contains only tiles/widgets and a small All apps link fixed at the bottom. The date, Edit layout, settings, layout switcher and Now area live in All apps. Choosing Edit layout or another layout returns to Home; Android Back exits editing.
 
 - Square, edge-to-edge flat tiles with no gaps, gradients, blur or borders. Each app tile uses the dominant opaque outer-edge color of its default icon; transparent margins are ignored. Labels switch between black and white for contrast. Built-in tiles use the accent color; photo/widget content retains its own appearance. Choose **2–6 cells across**, default **3**. All positions and sizes use whole cells; existing 2.0 layouts migrate automatically.
 - Large, unmodified Android app icons, including their original adaptive backgrounds. No replacement icon packs or foreground-only recoloring.
 - **Long press** an app tile for its Android-published dynamic/manifest shortcuts and app info. These are actual app actions, not a layout-edit gesture. Apps decide which actions they provide.
-- Tap **Edit layout**, then a tile, to resize, move, remove or **Pin position**. Tap **Done** to leave editing. Movement uses whole-cell directions. Pinned positions are fixed anchors; removing a tile packs unpinned tiles into free spaces. Narrowing the grid refuses to displace a pinned tile that would no longer fit.
+- Open **All apps → Edit layout**, then tap a tile, to resize, move, remove or **Pin position**. Use Android Back, or All apps → Done, to leave editing. Movement uses whole-cell directions. Pinned positions are fixed anchors; removing a tile packs unpinned tiles into free spaces. Narrowing the grid refuses to displace a pinned tile that would no longer fit.
 - Tile/widget dimensions include **1×1, 1×2, 2×1, 2×2**, and larger whole-cell rectangles that fit the selected width. An Android widget's own content may need a larger size to be useful.
 - Personal, Work and Travel have separate persistent arrangements. Copy a layout with confirmation, or enable a weekday Work schedule with chosen hours (including overnight shifts). Manual selection disables scheduling. These are launcher layouts, not Android managed work profiles.
 - Spring movement/resizing and press feedback, perspective live-tile updates, animated Now expansion, native sheets and panoramic Start/app-list paging. Reduce motion, system animation settings and battery saver suppress decorative motion; battery saver also uses solid surfaces.
@@ -34,7 +34,7 @@ The updater checks Android's installing/initiating package and update owner; Pla
 Enable **Manage notification access** for counts. Turn on **Show notification previews** to display content, and use per-app preview controls to exclude individual apps.
 
 - Tiles show real notification titles, message text, artwork, counts, progress and available actions. Tap a count to expand the notification preview. MessagingStyle conversations include recent messages and sender identity. Direct reply is available only when the app publishes a RemoteInput action.
-- **Now** surfaces ongoing media, progress, navigation and timer notifications without rearranging pinned tiles. Finished/dismissed notifications disappear. Android 17 semantic annotations supply caution/urgent/safe labels and colors when the source app provides them.
+- **Now** in All apps surfaces ongoing media, progress, navigation and timer notifications without rearranging pinned tiles. Finished/dismissed notifications disappear. Android 17 semantic annotations supply caution/urgent/safe labels and colors when the source app provides them.
 - Folder tiles aggregate counts and expand inline into live app tiles.
 - Clock, calendar, favorite People mosaics and battery/charging tiles. Calendar/favorites use optional read permissions; denial does not prevent using the launcher.
 - **Choose people** uses Android 17's contact picker (a phone picker fallback on older Android). Only selected names, numbers and emails are stored locally. Pin one person or a group; call/message/email through the appropriate Android app. Contact pictures appear for favorite contacts when contact access is granted; otherwise tiles show initials. Notification matching uses app-supplied person URIs, so it cannot reliably link every app's conversations.

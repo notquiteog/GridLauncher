@@ -155,12 +155,7 @@ private fun HomeScreen(
                 onItemClicked = onItemClicked,
                 onItemDropped = onItemDropped,
                 onItemLongClicked = onItemLongClicked,
-                onSettingsEvent = onSettingsEvent,
                 onTileEvent = onTileEvent,
-                onAddApp = onAddToGrid,
-                onSpecialTile = onSpecialTile,
-                onProfile = onProfile,
-                onCopyProfile = onCopyProfile,
                 onEditLayout = onEditLayout,
                 onFooterClicked = {
                     scope.launch {
@@ -178,12 +173,19 @@ private fun HomeScreen(
                 onFilterClearPressed = onFilterClearPressed,
                 onUninstall = onUninstall,
                 onFabClosed = onFabClosed,
+                onSettingsEvent = onSettingsEvent,
+                onEditLayout = { editing -> onEditLayout(editing); scope.launch { pagerState.animateScrollToPage(0) } },
+                onProfile = { name -> onProfile(name); scope.launch { pagerState.animateScrollToPage(0) } },
                 onBackPressed = {
                     scope.launch { pagerState.animateScrollToPage(0) }
                 }
             )
         }
     }
+    tgo1014.gridlauncher.ui.composables.sheets.SettingsBottomSheet(
+        tileSettings = state.tileSettings, isShowing = state.isSettingsSheetShowing,
+        onSettingsEvent = onSettingsEvent, apps = state.appList, onAddApp = onAddToGrid,
+        onAddSpecial = onSpecialTile, currentProfile = state.profile, onCopyProfile = onCopyProfile)
 }
 }
 
