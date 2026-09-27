@@ -72,12 +72,12 @@ class AppsManagerImpl @Inject constructor(
             .distinctBy { it.packageName }
             .filterNot { it.packageName == context.packageName }
             .mapNotNull {
-                App(
+                runCatching { App(
                     name = it.appName,
                     packageName = it.packageName,
                     icon = appIconManager.getIcon(it.packageName),
                     isSystemApp = it.isSystemApp
-                )
+                ) }.getOrNull()
             }
     }
 

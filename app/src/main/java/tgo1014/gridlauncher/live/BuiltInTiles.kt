@@ -32,8 +32,12 @@ object BuiltInTiles {
     }
 
     fun detail(context: Context, id: String): Pair<String, String>? = when (id) {
-        CLOCK -> android.text.format.DateFormat.getTimeFormat(context).format(Date()) to
-            DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date())
+        CLOCK -> {
+            val now = Date()
+            val use24 = android.text.format.DateFormat.is24HourFormat(context)
+            java.text.SimpleDateFormat(if (use24) "HH:mm" else "h:mm", java.util.Locale.getDefault()).format(now) to
+                DateFormat.getDateInstance(DateFormat.MEDIUM).format(now)
+        }
         BATTERY -> {
             val bm = context.getSystemService(BatteryManager::class.java)
             "${bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)}%" to if (bm.isCharging) "Charging" else "Battery remaining"
@@ -44,8 +48,8 @@ object BuiltInTiles {
     }
 
     private fun agenda(context: Context): Pair<String, String> {
-        val today = DateFormat.getDateInstance(DateFormat.FULL).format(Date())
-        if (!granted(context, Manifest.permission.READ_CALENDAR)) return today to "Tap to connect your calendar"
+        val today = java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()).format(Date())
+        if (!granted(context, Manifest.permission.READ_CALENDAR)) return today to "Tap to connect calendar"
         val now = System.currentTimeMillis()
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon()
         android.content.ContentUris.appendId(uri, now)

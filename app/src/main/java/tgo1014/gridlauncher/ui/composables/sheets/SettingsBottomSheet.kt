@@ -1,5 +1,7 @@
 package tgo1014.gridlauncher.ui.composables.sheets
 
+import androidx.activity.compose.LocalActivity
+
 import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,7 +36,7 @@ fun SettingsBottomSheet(
 ) {
     if (!isShowing) return
     val context = LocalContext.current
-    val activity = context as? MainActivity
+    val activity = LocalActivity.current as? MainActivity
     var folderDialog by remember { mutableStateOf(false) }
     val wallpaper = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let { onSettingsEvent(SettingsEvent.OnWallpaperPicked(it)) }

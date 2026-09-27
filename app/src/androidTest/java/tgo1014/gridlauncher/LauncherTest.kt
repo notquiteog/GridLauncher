@@ -46,6 +46,15 @@ class LauncherTest {
         compose.onNodeWithText("Remove").performClick()
         compose.waitUntil(5000) { runBlocking { compose.activity.appsManager.homeGridFlow.first().isEmpty() } }
     }
+    @Test fun builtInTilesSurviveActivityRecreationAndPackageRefresh() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 2)))
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Clock").assertIsDisplayed()
+        runBlocking { compose.activity.updateAppListUseCase() }
+        compose.waitForIdle()
+        assertEquals(BuiltInTiles.CLOCK, runBlocking { compose.activity.appsManager.homeGridFlow.first().single().app.packageName })
+    }
     @Test fun notificationsUpdateBadgeAndPreviewThenClear() {
         seed(listOf(GridItem(1, App("Example", "org.example.messages"), 4, height = 2)))
         runBlocking { compose.activity.settingsRepository.updateSettings(TileSettings(showNotificationText = true)) }

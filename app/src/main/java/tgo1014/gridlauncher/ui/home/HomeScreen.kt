@@ -1,5 +1,7 @@
 package tgo1014.gridlauncher.ui.home
 
+import androidx.activity.compose.LocalActivity
+
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
 import androidx.compose.runtime.SideEffect
@@ -44,7 +46,7 @@ fun HomeScreen(
     viewModel: HomeScreenViewModel = hiltViewModel()
 ) {
     val state by viewModel.stateFlow.collectAsStateWithLifecycle()
-    val activity = LocalContext.current as? androidx.activity.ComponentActivity
+    val activity = LocalActivity.current as? androidx.activity.ComponentActivity
     SideEffect {
         val style = if (state.tileSettings.darkTheme) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)

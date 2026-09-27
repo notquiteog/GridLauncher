@@ -1,5 +1,7 @@
 package tgo1014.gridlauncher.ui.composables
 
+import androidx.activity.compose.LocalActivity
+
 import android.Manifest
 import android.app.KeyguardManager
 import android.appwidget.AppWidgetManager
@@ -121,7 +123,7 @@ fun GridTile(
         .semantics { contentDescription = item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = listOf(CustomAccessibilityAction("Edit tile") { onItemLongClicked(item); true }) }
         .combinedClickable(onClick = { if (!holding) { if (isEditMode) onItemClicked(item) else open() } })) {
         if (item.widgetId >= 0) {
-            val activity = context as? MainActivity
+            val activity = LocalActivity.current as? MainActivity
             val manager = AppWidgetManager.getInstance(context)
             val info = remember(item.widgetId) { manager.getAppWidgetInfo(item.widgetId) }
             if (activity != null && info != null) {

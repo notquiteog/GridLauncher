@@ -121,8 +121,8 @@ class AppIconManagerImpl @Inject constructor(
     )
 
     fun Drawable.asBitmap(
-        widthPixels: Int = 500,
-        heightPixels: Int = 500
+        widthPixels: Int = 192,
+        heightPixels: Int = 192
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(widthPixels, heightPixels, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)

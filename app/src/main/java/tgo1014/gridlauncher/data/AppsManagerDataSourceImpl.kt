@@ -39,11 +39,22 @@ class AppsManagerDataSourceImpl @Inject constructor(
         dataStore.edit {
             it[appListKey] = json.encodeToString(appList)
             if (it[gridKey] == null && appList.isNotEmpty()) {
-                val builtIns = tgo1014.gridlauncher.live.BuiltInTiles.apps.take(2)
-                val initial = (builtIns + appList.take(8)).mapIndexed { index, app ->
-                    GridItem(id = index, app = app, width = 2, x = (index % 3) * 2, y = (index / 3) * 2)
+                val builtIns = tgo1014.gridlauncher.live.BuiltInTiles.apps
+                val initial = listOf(
+                    GridItem(id = 0, app = builtIns[0], width = 2),
+                    GridItem(id = 1, app = builtIns[1], width = 4, height = 2, x = 2)
+                ) + appList.take(8).mapIndexed { index, app ->
+                    GridItem(id = index + 2, app = app, width = 2, x = (index % 3) * 2, y = 2 + (index / 3) * 2)
                 }
                 it[gridKey] = json.encodeToString(initial)
+            } else if (it[gridKey] != null) {
+                val installed = appList.associateBy { app -> app.packageName }
+                val current = runCatching { json.decodeFromString<List<GridItem>>(it[gridKey]!!) }.getOrDefault(emptyList())
+                val refreshed = current.mapNotNull { tile ->
+                    val app = if (tile.app.packageName.startsWith("grid://")) tile.app else installed[tile.app.packageName]
+                    app?.let { tile.copy(app = app, children = tile.children.mapNotNull { child -> installed[child.packageName] }) }
+                }
+                it[gridKey] = json.encodeToString(refreshed)
             }
         }
     }

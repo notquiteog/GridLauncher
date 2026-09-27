@@ -45,6 +45,7 @@ jobs:
       - name: Verify APK signatures and record checksum
         run: |
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/37.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release.apk
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk dist/GridLauncher-Android17.apk
           (cd dist && sha256sum GridLauncher-Android17.apk > SHA256SUMS)
