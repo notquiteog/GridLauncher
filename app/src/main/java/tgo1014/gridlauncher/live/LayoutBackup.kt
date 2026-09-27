@@ -21,9 +21,9 @@ data class LayoutBackup(val version: Int = 2, val tiles: List<GridItem>, val set
                 ?: if (tile.app.packageName == BuiltInTiles.FOLDER && children.isNotEmpty()) App(tile.app.name.take(40), BuiltInTiles.FOLDER) else null
             if (app != null) {
                 require(tile.width in 1..12 && tile.height in 1..4 && tile.x in 0..11 && tile.y in 0..2000) { "Invalid tile dimensions" }
-                restored += GridPlacement.place(tile.copy(id = restored.size, positionPinned = false, app = app, children = children, widgetId = -1, photoUris = emptyList()), restored, settings.gridColumns)
+                restored += tile.copy(id = restored.size, app = app, children = children, widgetId = -1, photoUris = emptyList())
             }
         }
-        return restored
+        return GridPlacement.reflow(restored, settings.gridColumns)
     }
 }

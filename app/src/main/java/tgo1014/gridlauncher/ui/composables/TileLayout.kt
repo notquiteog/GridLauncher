@@ -55,8 +55,8 @@ fun TileLayout(
         }
         if (folder != null) {
             items(count = 1, layoutInfo = { LazyTableItem(column = 0, row = boundary, columnsCount = columns, rowsCount = folderRows) }) {
-                Column(Modifier.fillMaxSize().glassSurface(hazeState).padding(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(folder.app.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(10.dp)); TextButton(onClick = { expandedId = null }) { Text("Close") } }
+                Column(Modifier.fillMaxSize().glassSurface(hazeState)) {
+                    Row(Modifier.fillMaxWidth().height(unit), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Text(folder.app.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(10.dp)); TextButton(onClick = { expandedId = null }) { Text("Close") } }
                     folder.children.chunked(columns).forEach { row -> Row(Modifier.height(unit)) {
                         row.forEachIndexed { index, app -> GridTile(GridItem(-1000 - index, app, 1), hazeState = hazeState, tileSettings = tileSettings,
                             onItemClicked = onItemClicked, modifier = Modifier.weight(1f).fillMaxHeight()) }

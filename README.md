@@ -13,6 +13,7 @@ Download **GridLauncher-Android17.apk** from [Releases](https://github.com/notqu
 ## Start and editing
 
 - Square, edge-to-edge glass tiles with no gaps. Choose **2–6 cells across**, default **3**. All positions and sizes use whole cells; existing 2.0 layouts migrate automatically.
+- Large, unmodified Android app icons, including their original adaptive backgrounds. No replacement icon packs or foreground-only recoloring.
 - **Long press** an app tile for its Android-published dynamic/manifest shortcuts and app info. These are actual app actions, not a layout-edit gesture. Apps decide which actions they provide.
 - Tap **Edit layout**, then a tile, to resize, move, remove or **Pin position**. Tap **Done** to leave editing. Movement uses whole-cell directions. Pinned positions are fixed anchors; removing a tile packs unpinned tiles into free spaces. Narrowing the grid refuses to displace a pinned tile that would no longer fit.
 - Tile/widget dimensions include **1×1, 1×2, 2×1, 2×2**, and larger whole-cell rectangles that fit the selected width. An Android widget's own content may need a larger size to be useful.

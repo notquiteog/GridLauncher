@@ -170,10 +170,11 @@ fun GridTile(
             } else if (people.isNotEmpty()) {
                 PeopleMosaic(people, page, Modifier.fillMaxSize().padding(bottom = 24.dp))
             } else if (item.children.isNotEmpty()) {
+                val folderIconSize = (minOf(maxWidth, maxHeight) * .31f).coerceAtMost(64.dp)
                 Column(Modifier.align(Alignment.Center).padding(14.dp)) {
                     item.children.take(4).chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { app -> Box {
-                            AsyncImage(app.icon.iconFile, Modifier.size(32.dp))
+                            AsyncImage(app.icon.iconFile, Modifier.size(folderIconSize))
                             val count = matching.count { it.packageName == app.packageName }
                             if (count > 0) Text(count.toString(), color = glass.ink, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).background(glass.accent))
                         } }
@@ -182,7 +183,10 @@ fun GridTile(
             } else if (item.photoUris.isEmpty()) {
                 if (builtIn) Text(when (item.app.packageName) { BuiltInTiles.CLOCK -> "◷"; BuiltInTiles.CALENDAR -> java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH).toString(); BuiltInTiles.PEOPLE -> "● ●"; BuiltInTiles.BATTERY -> "▰"; else -> "▦" },
                     color = glass.ink, fontSize = if (expanded) 38.sp else 22.sp, modifier = Modifier.align(Alignment.Center))
-                else AsyncImage(item.app.icon.iconFile, Modifier.align(Alignment.Center).fillMaxSize(.48f))
+                else {
+                    val iconSize = minOf(maxWidth * .72f, maxHeight - if (tileSettings.isAppLabelsHidden) 12.dp else 32.dp).coerceAtLeast(24.dp)
+                    AsyncImage(item.app.icon.iconFile, Modifier.align(Alignment.Center).offset(y = if (tileSettings.isAppLabelsHidden) 0.dp else (-8).dp).size(iconSize))
+                }
             }
             if (expanded && !locked && tileSettings.showNotificationText && preview != null && preview.packageName !in tileSettings.hiddenPreviewApps && maxWidth >= 180.dp && preview.actions.isNotEmpty()) {
                 Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(preview, compact = true) }

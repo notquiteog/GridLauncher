@@ -68,7 +68,7 @@ class LiveNotificationService : NotificationListenerService() {
     override fun onDestroy() { NotificationTiles.replace(emptyList()); super.onDestroy() }
 }
 
-internal fun StatusBarNotification.toTile(): TileNotification? = notificationTile(key, packageName, notification, postTime)
+internal fun StatusBarNotification.toTile(): TileNotification? = runCatching { notificationTile(key, packageName, notification, postTime) }.getOrNull()
 
 @Suppress("DEPRECATION")
 internal fun notificationTile(key: String, packageName: String, original: Notification, time: Long): TileNotification? {

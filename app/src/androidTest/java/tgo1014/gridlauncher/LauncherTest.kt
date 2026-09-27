@@ -28,6 +28,21 @@ class LauncherTest {
         }
         compose.waitForIdle()
     }
+    @Test fun appIconsUseCompleteDefaultSystemDrawable() {
+        val context = compose.activity
+        val packageName = "com.android.settings"
+        runBlocking { context.updateAppListUseCase() }
+        compose.waitUntil(5000) { runBlocking { context.appsManager.installedAppsFlow.first().any { it.packageName == packageName && it.icon.iconFilePath?.contains("_default_") == true } } }
+        val icon = runBlocking { context.appsManager.installedAppsFlow.first().first { it.packageName == packageName }.icon }
+        val cached = android.graphics.BitmapFactory.decodeFile(icon.iconFilePath)
+        val expected = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
+        context.packageManager.getApplicationIcon(packageName).apply {
+            setBounds(0, 0, 256, 256)
+            draw(android.graphics.Canvas(expected))
+        }
+        assertNull(icon.bgFilePath)
+        assertTrue("Keep the app's complete default icon, including adaptive background", expected.sameAs(cached))
+    }
     @Test fun homeIntentAndAppDrawerWork() {
         val context = compose.activity
         val homes = context.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
@@ -204,6 +219,29 @@ class LauncherTest {
         val data = compose.activity.onHandoffActivityDataRequested(android.app.HandoffActivityDataRequestInfo(true))
         assertEquals(setOf("grid.profile"), data.extras!!.keySet())
         assertEquals("Personal", data.extras!!.getString("grid.profile"))
+    }
+
+    @Test fun realAndroidWidgetCanResizeToWholeCellRectangles() {
+        seed(emptyList())
+        val activity = compose.activity
+        val manager = android.appwidget.AppWidgetManager.getInstance(activity)
+        val provider = manager.installedProviders.firstOrNull { it.provider.packageName.contains("deskclock") }
+            ?: manager.installedProviders.first()
+        val id = activity.widgetHost.allocateAppWidgetId()
+        val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+        try {
+            automation.adoptShellPermissionIdentity("android.permission.BIND_APPWIDGET")
+            assertTrue(manager.bindAppWidgetIdIfAllowed(id, provider.provider))
+            automation.dropShellPermissionIdentity()
+            seed(listOf(GridItem(81, App("Test widget", BuiltInTiles.WIDGET), 1, widgetId = id)))
+            compose.onNodeWithText("Edit layout").performClick()
+            compose.onNodeWithContentDescription("Test widget").performClick()
+            for ((w,h) in listOf(1 to 2, 2 to 1, 2 to 2, 1 to 1)) {
+                compose.onNodeWithText("${w}×${h}").performClick()
+                compose.waitUntil(5000) { runBlocking { compose.activity.appsManager.homeGridFlow.first().single().let { it.width == w && it.height == h } } }
+            }
+            assertTrue(manager.getAppWidgetOptions(id).getInt(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) > 0)
+        } finally { automation.dropShellPermissionIdentity(); activity.widgetHost.deleteAppWidgetId(id) }
     }
 
 }

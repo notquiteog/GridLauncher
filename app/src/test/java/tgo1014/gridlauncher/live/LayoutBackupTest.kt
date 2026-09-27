@@ -31,4 +31,11 @@ class LayoutBackupTest {
         val item = Json.decodeFromString(GridItem.serializer(), """{"id":1,"app":{"name":"Example","packageName":"org.example"},"width":2}""")
         assertTrue(item.children.isEmpty()); assertEquals(-1, item.widgetId)
     }
+    @Test fun restorePreservesValidPositionPins() {
+        val app = App("App", "org.example.app")
+        val backup = LayoutBackup(tiles = listOf(GridItem(12, app, 1, x = 2, y = 3, positionPinned = true)), settings = TileSettings())
+        val restored = backup.restore(listOf(app)).single()
+        assertTrue(restored.positionPinned); assertEquals(2, restored.x); assertEquals(3, restored.y)
+    }
+
 }
