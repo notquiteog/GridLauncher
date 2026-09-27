@@ -17,7 +17,7 @@ package, code, name = re.search(r"package: name='([^']+)' versionCode='(\d+)' ve
 assert package == "io.github.notquiteog.gridlauncher"
 metadata = {
     "schema": 1, "packageName": package, "versionCode": int(code), "versionName": name,
-    "minSdk": int(re.search(r"sdkVersion:'(\d+)'", badging)[1]),
+    "minSdk": int(re.search(r"(?:minSdkVersion|sdkVersion):'(\d+)'", badging)[1]),
     "apkUrl": f"https://github.com/notquiteog/GridLauncher/releases/download/{tag}/GridLauncher-Android17.apk",
     "sha256": hashlib.file_digest(apk.open("rb"), "sha256").hexdigest(), "size": apk.stat().st_size,
 }
