@@ -21,7 +21,10 @@ adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
 ./gradlew connectedDebugAndroidTest --stacktrace
 # Also install and launch the actual downloadable signed APK.
-adb uninstall io.github.notquiteog.gridlauncher
+# AGP can already have uninstalled the test target during test cleanup.
+if [[ "$(adb shell pm path io.github.notquiteog.gridlauncher)" == package:* ]]; then
+  adb uninstall io.github.notquiteog.gridlauncher
+fi
 adb install app/build/outputs/apk/release/app-release.apk
 adb shell cmd package set-home-activity io.github.notquiteog.gridlauncher/tgo1014.gridlauncher.ui.MainActivity
 adb shell am start -W -n io.github.notquiteog.gridlauncher/tgo1014.gridlauncher.ui.MainActivity
