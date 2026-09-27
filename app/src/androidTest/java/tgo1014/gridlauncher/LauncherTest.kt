@@ -56,14 +56,14 @@ class LauncherTest {
         assertEquals(BuiltInTiles.CLOCK, runBlocking { compose.activity.appsManager.homeGridFlow.first().single().app.packageName })
     }
     @Test fun notificationsUpdateBadgeAndPreviewThenClear() {
-        seed(listOf(GridItem(1, App("Example", "org.example.messages"), 4, height = 2)))
+        seed(listOf(GridItem(1, App("Settings", "com.android.settings"), 4, height = 2)))
         runBlocking { compose.activity.settingsRepository.updateSettings(TileSettings(showNotificationText = true)) }
-        NotificationTiles.post(TileNotification("message", "org.example.messages", "Hello from Android", "A real tile update", 1))
+        NotificationTiles.post(TileNotification("message", "com.android.settings", "Hello from Android", "A real tile update", 1))
         compose.waitUntil(5000) { compose.onAllNodesWithText("Hello from Android").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("A real tile update").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Example, 1 notifications").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Settings, 1 notifications").assertIsDisplayed()
         NotificationTiles.remove("message")
-        compose.onNodeWithContentDescription("Example").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Settings").assertIsDisplayed()
         compose.onNodeWithText("Hello from Android").assertDoesNotExist()
     }
     @Test fun notificationListenerReceivesAndroidPostedNotification() {
