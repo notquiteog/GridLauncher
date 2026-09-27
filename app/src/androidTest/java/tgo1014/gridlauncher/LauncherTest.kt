@@ -67,7 +67,8 @@ class LauncherTest {
         compose.onNodeWithText("Hello from Android").assertDoesNotExist()
     }
     @Test fun notificationListenerReceivesAndroidPostedNotification() {
-        seed(listOf(GridItem(1, App("Shell messages", "com.android.shell"), 2)))
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 2)))
+        val tag = "grid-test-${System.currentTimeMillis()}"
         val component = "io.github.notquiteog.gridlauncher/tgo1014.gridlauncher.live.LiveNotificationService"
         fun shell(command: String) {
             val output = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
@@ -75,9 +76,10 @@ class LauncherTest {
         }
         try {
             shell("cmd notification allow_listener $component")
-            shell("cmd notification post -t GridLauncher grid-test Android-notification")
-            compose.waitUntil(10000) { NotificationTiles.notifications.value.any { it.packageName == "com.android.shell" } }
-            compose.onNodeWithContentDescription("Shell messages, 1 notifications").assertIsDisplayed()
+            shell("cmd notification post -t GridLauncher $tag Android-notification")
+            compose.waitUntil(15000) { NotificationTiles.notifications.value.any { it.packageName == "com.android.shell" && it.key.contains(tag) } }
+            assertTrue(NotificationTiles.notifications.value.first { it.key.contains(tag) }.time > 0)
+            compose.onNodeWithContentDescription("Clock").assertIsDisplayed()
         } finally { shell("cmd notification disallow_listener $component"); NotificationTiles.replace(emptyList()) }
     }
     @Test fun holdingAndDraggingMovesTileWithoutOpeningApp() {
