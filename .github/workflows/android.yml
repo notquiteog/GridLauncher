@@ -38,10 +38,14 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.APK_SIGNING_PASSWORD }}
           SIGNING_KEY_ALIAS: gridlauncher
           SIGNING_KEY_PASSWORD: ${{ secrets.APK_SIGNING_PASSWORD }}
-        run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest --stacktrace --info
+        run: |
+          ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+          ./gradlew assembleRelease --stacktrace
       - name: Build pull request with development key
         if: github.event_name == 'pull_request'
-        run: ./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease assembleDebugAndroidTest --stacktrace --info
+        run: |
+          ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
+          ./gradlew assembleRelease --stacktrace
       - name: Verify APK signatures and record checksum
         run: |
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
