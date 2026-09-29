@@ -79,7 +79,10 @@ class CallTilesTest {
     @Test fun quietHoursAnExcludedAppALockedDeviceAndOffPreviewsAllShowNothing() {
         val list = listOf(incoming())
         assertTrue(CallTiles.calls(list, open().copy(meetingMode = true), appName = names()).isEmpty())
-        assertTrue(CallTiles.calls(list, open().copy(quietHoursEnabled = true, quietStartHour = 0, quietEndHour = 23), appName = names()).isEmpty())
+        // A window built from the current hour, so this cannot fail at 23:00 in another timezone.
+        val now = java.time.LocalTime.now()
+        val quiet = open().copy(quietHoursEnabled = true, quietStartHour = now.hour, quietEndHour = (now.hour + 1) % 24)
+        assertTrue(CallTiles.calls(list, quiet, appName = names()).isEmpty())
         assertTrue(CallTiles.calls(list, open().copy(hiddenPreviewApps = setOf("com.android.dialer")), appName = names()).isEmpty())
         assertTrue(CallTiles.calls(list, open(), locked = true, appName = names()).isEmpty())
         assertTrue(CallTiles.calls(list, open().copy(showNotificationText = false), appName = names()).isEmpty())
