@@ -47,6 +47,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.launch
 import tgo1014.gridlauncher.domain.models.App
+import tgo1014.gridlauncher.live.SearchRow
 import tgo1014.gridlauncher.ui.composables.LaunchedIfTrueEffect
 import tgo1014.gridlauncher.ui.models.GridItem
 import tgo1014.gridlauncher.ui.models.SettingsEvent
@@ -96,6 +97,7 @@ fun HomeScreen(
         onDeleteLayout = viewModel::deleteLayout,
         onHandoffFocusHandled = viewModel::onHandoffFocusHandled,
         onPinToHotseat = { viewModel.pinToHotseat(it) },
+        onSearchRowClicked = viewModel::onSearchRowClicked,
         frequent = frequent,
         onEditLayout = viewModel::setEditingLayout
     )
@@ -123,6 +125,7 @@ private fun HomeScreen(
     onDeleteLayout: (String) -> Unit = {},
     onHandoffFocusHandled: () -> Unit = {},
     onPinToHotseat: (String) -> Unit = {},
+    onSearchRowClicked: (SearchRow) -> Unit = {},
     frequent: List<String> = emptyList(),
     onEditLayout: (Boolean) -> Unit = {},
 ) {
@@ -189,6 +192,7 @@ private fun HomeScreen(
             onProfile = { name -> onProfile(name); scope.launch { pagerState.animateScrollToPage(0) } },
             onCreateLayout = { name, copy -> onCreateLayout(name, copy); scope.launch { pagerState.animateScrollToPage(0) } },
             onRenameLayout = onRenameLayout, onDeleteLayout = onDeleteLayout,
+            onSearchRowClicked = onSearchRowClicked,
             onBackPressed = { scope.launch { pagerState.animateScrollToPage(0) } })
     }
     if (continuum) {

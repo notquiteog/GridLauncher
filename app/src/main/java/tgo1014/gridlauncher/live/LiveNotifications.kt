@@ -32,7 +32,11 @@ data class TileNotification(
 object NotificationTiles {
     private val mutable = MutableStateFlow<List<TileNotification>>(emptyList())
     val notifications = mutable.asStateFlow()
-    @Synchronized fun replace(items: List<TileNotification>) { mutable.value = items.sortedByDescending { it.time }.take(200) }
+    @Synchronized fun replace(items: List<TileNotification>) {
+        mutable.value = items.sortedByDescending { it.time }.take(200)
+        // One flag, however many notifications arrived: the indexer debounces the rest.
+        StartSearchIndex.invalidate()
+    }
     @Synchronized fun post(item: TileNotification) { replace(mutable.value.filterNot { it.key == item.key } + item) }
     @Synchronized fun remove(key: String) { replace(mutable.value.filterNot { it.key == key }) }
 

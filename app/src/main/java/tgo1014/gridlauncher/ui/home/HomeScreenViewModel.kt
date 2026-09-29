@@ -51,6 +51,7 @@ class HomeScreenViewModel @Inject constructor(
 ) : ViewModel() {
 
     private var fullAppList: List<App> = emptyList()
+    private var searchJob: kotlinx.coroutines.Job? = null
 
     /** Package names by how often you open them, for the drawer's Frequent and Recent sorts. */
     val frequentApps = usage.frequent
@@ -192,10 +193,27 @@ class HomeScreenViewModel @Inject constructor(
             it.name.withoutAccents.contains(filter.withoutAccents.trim(), true)
         }
         _stateFlow.update { it.copy(filterString = filter, appList = appList) }
+        search(filter)
     }
 
     fun onFilterCleared() {
-        _stateFlow.update { it.copy(filterString = "", appList = fullAppList) }
+        searchJob?.cancel()
+        searchJob = null
+        _stateFlow.update { it.copy(filterString = "", appList = fullAppList, searchResults = emptyList()) }
+    }
+
+    /** People, notifications and calendar for the same query the app names were filtered with. */
+    private fun search(query: String) {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            val hits = tgo1014.gridlauncher.live.StartSearchIndex.search(query)
+            if (_stateFlow.value.filterString != query) return@launch
+            _stateFlow.update { it.copy(searchResults = hits) }
+        }
+    }
+
+    fun onSearchRowClicked(row: tgo1014.gridlauncher.live.SearchRow) {
+        tgo1014.gridlauncher.live.StartSearchIndex.open(context, row)
     }
 
     fun onSettingsEvent(event: SettingsEvent) = viewModelScope.launch {

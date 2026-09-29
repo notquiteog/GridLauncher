@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.launch
 import tgo1014.gridlauncher.domain.models.App
+import tgo1014.gridlauncher.live.SearchRow
+import tgo1014.gridlauncher.live.SearchSource
+import tgo1014.gridlauncher.live.StartSearch
 import tgo1014.gridlauncher.ui.theme.AsyncImage
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -47,6 +50,7 @@ fun AppListScreen(
     onCreateLayout: (String, Boolean) -> Unit = { _, _ -> }, onRenameLayout: (String, String) -> Unit = { _, _ -> },
     onDeleteLayout: (String) -> Unit = {}, frequent: List<String> = emptyList(),
     onPinToHotseat: (String) -> Unit = {}, onSearch: () -> Unit = {}, onAskHandled: () -> Unit = {},
+    onSearchRowClicked: (SearchRow) -> Unit = {},
 ) {
     BackHandler(onBack = onBackPressed)
     val context = LocalContext.current
@@ -68,6 +72,9 @@ fun AppListScreen(
         if (state.tileSettings.drawerSort == "alphabetical") ordered.groupBy { it.nameFirstLetter.uppercase() }
         else mapOf<String, List<App>>((if (state.tileSettings.drawerSort == "recent") "Recent" else "Most used") to ordered)
     }
+    // Apps first, then the people, notifications and calendar the same query found. Identical
+    // either way: these rows are what the search returns whether or not an index is behind it.
+    val found = remember(state.searchResults) { StartSearch.sections(state.searchResults) }
     val ink = if (state.tileSettings.darkTheme) Color.White else Color(0xFF142C42)
     // Translucent when a wallpaper is set, so the glass controls still have something to sample.
     val background = if (state.tileSettings.isTransparencyEnabled) Color.Transparent else if (state.tileSettings.darkTheme) Color(0xFF101E30) else Color(0xFFEDF4FA)
@@ -92,7 +99,7 @@ fun AppListScreen(
         OutlinedTextField(state.filterString, onFilterTextChanged, placeholder = { Text("Search apps") }, singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = ink, focusedPlaceholderColor = ink.copy(alpha = .7f), unfocusedPlaceholderColor = ink.copy(alpha = .7f)),
             trailingIcon = { if (state.filterString.isNotEmpty()) TextButton(onClick = onFilterClearPressed) { Text("Clear") } }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
-        if (grouped.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
+        if (grouped.isEmpty() && found.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             grouped.forEach { (letter, apps) ->
                 item(key = "letter:$letter") { Text(letter, fontSize = if (state.tileSettings.drawerSort == "alphabetical") 30.sp else 14.sp, color = MaterialTheme.colorScheme.primary,
@@ -125,6 +132,13 @@ fun AppListScreen(
                     }
                 }
             }
+            found.forEach { section ->
+                item(key = "found:${section.source}") { Text(SearchSource.label(section.source), fontSize = 14.sp, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp)) }
+                items(section.rows, key = { "found:${it.id}" }) { row ->
+                    SearchResultRow(row, ink) { onSearchRowClicked(row) }
+                }
+            }
         }
     }
     if (alphabet && state.tileSettings.drawerSort == "alphabetical") AlertDialog(onDismissRequest = { alphabet = false }, title = { Text("Jump to letter") }, text = {
@@ -137,6 +151,21 @@ fun AppListScreen(
         } } }
     }, confirmButton = { TextButton(onClick = { alphabet = false }) { Text("Close") } })
 }
+}
+
+/** A person, a notification or a calendar event, drawn like an app row without an icon file. */
+@Composable
+private fun SearchResultRow(row: SearchRow, ink: Color, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Text(row.title.take(1).uppercase(), color = ink, fontSize = 20.sp)
+        }
+        Column(Modifier.padding(start = 16.dp).weight(1f)) {
+            Text(row.title, color = ink, fontSize = 20.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (row.subtitle.isNotBlank()) Text(row.subtitle, color = ink.copy(alpha = .7f), fontSize = 14.sp,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+    }
 }
 
 /** Layout chips plus create, rename and delete for the user's own layouts. */

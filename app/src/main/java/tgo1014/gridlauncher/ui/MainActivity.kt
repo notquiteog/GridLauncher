@@ -163,6 +163,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingWidget = savedInstanceState?.getInt("pendingWidget", -1) ?: -1
+        tgo1014.gridlauncher.live.StartSearchIndex.start(this)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         lifecycleScope.launch { settingsRepository.tileSettingsFlow.collect { settings ->
@@ -193,6 +194,7 @@ class MainActivity : ComponentActivity() {
         updater.check()
         tgo1014.gridlauncher.live.MediaTiles.refresh(this)
         tgo1014.gridlauncher.live.SensorTiles.start(this)
+        tgo1014.gridlauncher.live.StartSearchIndex.refresh(this)
         lifecycleScope.launch { updateAppListUseCase() }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveHandoff(intent); receivePinRequest(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
