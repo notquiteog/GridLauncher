@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeState
 import tgo1014.gridlauncher.domain.models.App
+import tgo1014.gridlauncher.live.BuiltInTiles
 import tgo1014.gridlauncher.live.QuietHours
 import tgo1014.gridlauncher.ui.composables.Hotseat
 import tgo1014.gridlauncher.ui.composables.StartHeader
@@ -115,5 +116,5 @@ fun GridScreenScreen(
     }
     TileSettingsBottomSheet(isShowing = state.isEditingLayout && state.itemBeingEdited != null,
         item = state.itemBeingEdited, onTileEvent = onTileEvent,
-        folderApps = state.appList, onFolderChanged = onFolderChanged)
+        folderApps = state.appList + BuiltInTiles.apps, onFolderChanged = onFolderChanged)
 }

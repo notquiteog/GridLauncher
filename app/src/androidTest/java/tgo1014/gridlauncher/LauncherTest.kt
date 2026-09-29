@@ -355,18 +355,18 @@ class LauncherTest {
         compose.onNodeWithText("Edit layout").performClick()
         compose.onNodeWithContentDescription("Tools").performClick()
         compose.onNodeWithText("Add or remove apps").performClick()
-        compose.onNodeWithContentDescription("Add Battery to folder").performClick()
+        // The picker offers installed apps and the built-in tiles.
+        compose.onNodeWithContentDescription("Add Calendar to folder").performClick()
         compose.waitUntil(5000) {
             runBlocking { compose.activity.appsManager.homeGridFlow.first().first { it.app.name == "Tools" } }
-                .children.any { it.packageName == BuiltInTiles.BATTERY }
+                .children.any { it.packageName == BuiltInTiles.CALENDAR }
         }
-        val folder = runBlocking { compose.activity.appsManager.homeGridFlow.first() }.first { it.app.name == "Tools" }
-        assertEquals(2, folder.children.size)
-        // Tapping it again takes it back out.
-        compose.onNodeWithContentDescription("Remove Battery from folder").performClick()
+        assertEquals(2, runBlocking { compose.activity.appsManager.homeGridFlow.first() }.first { it.app.name == "Tools" }.children.size)
+        // Tapping the same entry again takes it back out.
+        compose.onNodeWithContentDescription("Remove Calendar from folder").performClick()
         compose.waitUntil(5000) {
             runBlocking { compose.activity.appsManager.homeGridFlow.first().first { it.app.name == "Tools" } }
-                .children.none { it.packageName == BuiltInTiles.BATTERY }
+                .children.none { it.packageName == BuiltInTiles.CALENDAR }
         }
     }
 
