@@ -27,11 +27,9 @@ fun TileLayout(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     onItemClicked: (GridItem) -> Unit = {}, onItemDropped: (GridItem, Int, Int) -> Unit = { _, _, _ -> },
     onItemLongClicked: (GridItem) -> Unit = {}, focusedId: Int? = null, onFocusTile: (GridItem) -> Unit = {}, profile: String = "Personal",
-    state: LazyTableState? = null,
 ) = BoxWithConstraints(modifier) {
     // LazyTable requires at least one item; an empty profile is intentionally blank.
     if (grid.isEmpty()) return@BoxWithConstraints
-    val tableState = state ?: rememberLazyTableState()
     val motion = LocalGlass.current.motion
     val unit = maxWidth / columns
     val pixels = with(LocalDensity.current) { unit.toPx() }
@@ -46,7 +44,7 @@ fun TileLayout(
         edge
     }
     val folderRows = if (folder == null) 0 else 1 + ((folder.childCount + columns - 1) / columns)
-    LazyTable(state = tableState, scrollDirection = LazyTableScrollDirection.VERTICAL, contentPadding = contentPadding,
+    LazyTable(scrollDirection = LazyTableScrollDirection.VERTICAL, contentPadding = contentPadding,
         dimensions = lazyTableDimensions({ unit }, { unit })) {
         items(items = grid, key = { it.id }, layoutInfo = { tile -> LazyTableItem(column = tile.x, row = tile.y + if (tile.y >= boundary) folderRows else 0, columnsCount = tile.width, rowsCount = tile.height) }) { tile ->
             val target = IntOffset((tile.x * pixels).roundToInt(), ((tile.y + if (tile.y >= boundary) folderRows else 0) * pixels).roundToInt())

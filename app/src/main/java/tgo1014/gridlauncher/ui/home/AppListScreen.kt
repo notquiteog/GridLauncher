@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,6 +39,8 @@ import tgo1014.gridlauncher.domain.models.App
 import tgo1014.gridlauncher.live.SearchRow
 import tgo1014.gridlauncher.live.SearchSource
 import tgo1014.gridlauncher.live.StartSearch
+import tgo1014.gridlauncher.ui.composables.JumpRail
+import tgo1014.gridlauncher.ui.composables.jumpLetterOf
 import tgo1014.gridlauncher.ui.theme.AsyncImage
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -72,6 +75,12 @@ fun AppListScreen(
         if (state.tileSettings.drawerSort == "alphabetical") ordered.groupBy { it.nameFirstLetter.uppercase() }
         else mapOf<String, List<App>>((if (state.tileSettings.drawerSort == "recent") "Recent" else "Most used") to ordered)
     }
+    // The jump rail belongs here rather than on Start: Windows Phone kept the alphabet beside the app
+    // list, and it only has letters to offer while the list is actually grouped by letter.
+    val letters = remember(grouped, state.tileSettings.drawerSort) {
+        if (state.tileSettings.drawerSort == "alphabetical") grouped.keys.mapTo(mutableSetOf()) { jumpLetterOf(it) }
+        else emptySet()
+    }
     // Apps first, then the people, notifications and calendar the same query found. Identical
     // either way: these rows are what the search returns whether or not an index is behind it.
     val found = remember(state.searchResults) { StartSearch.sections(state.searchResults) }
@@ -100,43 +109,47 @@ fun AppListScreen(
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = ink, focusedPlaceholderColor = ink.copy(alpha = .7f), unfocusedPlaceholderColor = ink.copy(alpha = .7f)),
             trailingIcon = { if (state.filterString.isNotEmpty()) TextButton(onClick = onFilterClearPressed) { Text("Clear") } }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
         if (grouped.isEmpty() && found.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
-        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-            grouped.forEach { (letter, apps) ->
-                item(key = "letter:$letter") { Text(letter, fontSize = if (state.tileSettings.drawerSort == "alphabetical") 30.sp else 14.sp, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { alphabet = true }.padding(vertical = if (state.tileSettings.drawerSort == "alphabetical") 14.dp else 4.dp, horizontal = 8.dp)) }
-                items(apps, key = { it.packageName }) { app ->
-                    var menu by remember { mutableStateOf(false) }
-                    val launcher = context.getSystemService(LauncherApps::class.java)
-                    val shortcuts by produceState(emptyList(), menu, app.packageName) {
-                        value = if (menu && launcher.hasShortcutHostPermission()) runCatching { launcher.getShortcuts(
-                            LauncherApps.ShortcutQuery().setPackage(app.packageName).setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST),
-                            Process.myUserHandle())?.take(4).orEmpty() }.getOrDefault(emptyList()) else emptyList()
-                    }
-                    Box {
-                        Row(Modifier.fillMaxWidth().combinedClickable(onClick = { onAppClicked(app) }, onLongClick = { menu = true }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(app.icon.iconFile, Modifier.size(48.dp))
-                            Text(app.name, color = ink, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp))
+        Row(Modifier.fillMaxWidth().weight(1f)) {
+            if (letters.isNotEmpty()) DrawerRail(letters, grouped, listState, onShowAlphabet = { alphabet = true },
+                modifier = Modifier.width(32.dp).fillMaxHeight())
+            LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+                grouped.forEach { (letter, apps) ->
+                    item(key = "letter:$letter") { Text(letter, fontSize = if (state.tileSettings.drawerSort == "alphabetical") 30.sp else 14.sp, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { alphabet = true }.padding(vertical = if (state.tileSettings.drawerSort == "alphabetical") 14.dp else 4.dp, horizontal = 8.dp)) }
+                    items(apps, key = { it.packageName }) { app ->
+                        var menu by remember { mutableStateOf(false) }
+                        val launcher = context.getSystemService(LauncherApps::class.java)
+                        val shortcuts by produceState(emptyList(), menu, app.packageName) {
+                            value = if (menu && launcher.hasShortcutHostPermission()) runCatching { launcher.getShortcuts(
+                                LauncherApps.ShortcutQuery().setPackage(app.packageName).setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST),
+                                Process.myUserHandle())?.take(4).orEmpty() }.getOrDefault(emptyList()) else emptyList()
                         }
-                        DropdownMenu(menu, { menu = false }) {
-                            DropdownMenuItem(text = { Text("Pin to Start") }, onClick = { menu = false; onAddToGrid(app) })
-                            shortcuts.forEach { shortcut ->
-                                DropdownMenuItem(text = { Text("Pin: ${shortcut.shortLabel}") }, onClick = { menu = false; activity?.pinShortcut(app, shortcut) })
-                                DropdownMenuItem(text = { Text(shortcut.shortLabel?.toString().orEmpty()) }, onClick = {
-                                menu = false; runCatching { launcher.startShortcut(shortcut, null, null) }
-                            }) }
-                            DropdownMenuItem(text = { Text("App info") }, onClick = {
-                                menu = false; context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.packageName}")))
-                            })
-                            if (!app.isSystemApp) DropdownMenuItem(text = { Text("Uninstall") }, onClick = { menu = false; onUninstall(app) })
+                        Box {
+                            Row(Modifier.fillMaxWidth().combinedClickable(onClick = { onAppClicked(app) }, onLongClick = { menu = true }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AsyncImage(app.icon.iconFile, Modifier.size(48.dp))
+                                Text(app.name, color = ink, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp))
+                            }
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(text = { Text("Pin to Start") }, onClick = { menu = false; onAddToGrid(app) })
+                                shortcuts.forEach { shortcut ->
+                                    DropdownMenuItem(text = { Text("Pin: ${shortcut.shortLabel}") }, onClick = { menu = false; activity?.pinShortcut(app, shortcut) })
+                                    DropdownMenuItem(text = { Text(shortcut.shortLabel?.toString().orEmpty()) }, onClick = {
+                                    menu = false; runCatching { launcher.startShortcut(shortcut, null, null) }
+                                }) }
+                                DropdownMenuItem(text = { Text("App info") }, onClick = {
+                                    menu = false; context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.packageName}")))
+                                })
+                                if (!app.isSystemApp) DropdownMenuItem(text = { Text("Uninstall") }, onClick = { menu = false; onUninstall(app) })
+                            }
                         }
                     }
                 }
-            }
-            found.forEach { section ->
-                item(key = "found:${section.source}") { Text(SearchSource.label(section.source), fontSize = 14.sp, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp)) }
-                items(section.rows, key = { "found:${it.id}" }) { row ->
-                    SearchResultRow(row, ink) { onSearchRowClicked(row) }
+                found.forEach { section ->
+                    item(key = "found:${section.source}") { Text(SearchSource.label(section.source), fontSize = 14.sp, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp)) }
+                    items(section.rows, key = { "found:${it.id}" }) { row ->
+                        SearchResultRow(row, ink) { onSearchRowClicked(row) }
+                    }
                 }
             }
         }
@@ -144,13 +157,48 @@ fun AppListScreen(
     if (alphabet && state.tileSettings.drawerSort == "alphabetical") AlertDialog(onDismissRequest = { alphabet = false }, title = { Text("Jump to letter") }, text = {
         Column { grouped.keys.toList().chunked(5).forEach { row -> Row {
             row.forEach { letter -> TextButton(onClick = {
-                var index = 0
-                for ((key, apps) in grouped) { if (key == letter) break; index += apps.size + 1 }
+                val index = headerAt(grouped) { it == letter }
                 alphabet = false; scope.launch { listState.scrollToItem(index) }
             }, modifier = Modifier.weight(1f)) { Text(letter, fontSize = 22.sp) } }
         } } }
     }, confirmButton = { TextButton(onClick = { alphabet = false }) { Text("Close") } })
 }
+}
+
+/**
+ * The jump rail beside the list. The letter at the top of the list is derived here rather than in
+ * the drawer itself, so scrolling the list only recomposes the rail.
+ */
+@Composable
+private fun DrawerRail(
+    letters: Set<Char>, grouped: Map<String, List<App>>, listState: LazyListState,
+    onShowAlphabet: () -> Unit, modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val current by remember(grouped) { derivedStateOf { keyAt(grouped, listState.firstVisibleItemIndex)?.let { jumpLetterOf(it) } } }
+    JumpRail(letters, current,
+        onJump = { letter -> scope.launch { listState.scrollToItem(headerAt(grouped) { jumpLetterOf(it) == letter }) } },
+        onShowAlphabet = onShowAlphabet, modifier = modifier)
+}
+
+/**
+ * The item index of the group header [match] selects. Every group before it contributes its header
+ * plus its apps, which is the arithmetic the drawer list actually lays out.
+ */
+private fun headerAt(grouped: Map<String, List<App>>, match: (String) -> Boolean): Int {
+    var index = 0
+    for ((key, apps) in grouped) { if (match(key)) return index; index += apps.size + 1 }
+    return 0
+}
+
+/** The group key whose header sits at [index], or null once the search results start. */
+private fun keyAt(grouped: Map<String, List<App>>, index: Int): String? {
+    var offset = 0
+    for ((key, apps) in grouped) {
+        if (offset == index) return key
+        offset += apps.size + 1
+    }
+    return null
 }
 
 /** A person, a notification or a calendar event, drawn like an app row without an icon file. */

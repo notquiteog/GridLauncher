@@ -23,8 +23,6 @@ data class TileSettings(
     val showTileCounts: Boolean = true,
     val stackNotifications: Boolean = true,
     val showStartHeader: Boolean = true,
-    /** The semi-panoramic jump list down the left edge of Start. */
-    val semiPanoramic: Boolean = true,
     /** Package names for the hotseat, in order. Lives outside the packed grid on purpose. */
     val hotseat: List<String> = emptyList(),
     /** A1Z26, most used, or recently used. */

@@ -108,8 +108,6 @@ fun SettingsBottomSheet(
             SettingSwitch("Reduce motion", tileSettings.reduceMotion) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(reduceMotion = it))) }
             SettingSwitch("One-handed layout", tileSettings.oneHanded) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(oneHanded = it))) }
             SettingSwitch("Start header", tileSettings.showStartHeader) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showStartHeader = it))) }
-            SettingSwitch("Start jump list", tileSettings.semiPanoramic) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(semiPanoramic = it))) }
-            Text("Puts an A\u2013Z jump list down the left edge of Start. Tap a letter to scroll to the first tile that starts with it; press and hold for the whole alphabet.", style = MaterialTheme.typography.bodySmall)
             Text("All apps order", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("alphabetical" to "A–Z", "frequent" to "Most used", "recent" to "Recent").forEach { (key, label) ->

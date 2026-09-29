@@ -24,15 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeState
-import eu.wewox.lazytable.rememberLazyTableState
 import tgo1014.gridlauncher.domain.models.App
 import tgo1014.gridlauncher.live.BuiltInTiles
 import tgo1014.gridlauncher.live.QuietHours
 import tgo1014.gridlauncher.ui.composables.Hotseat
-import tgo1014.gridlauncher.ui.composables.JumpRail
 import tgo1014.gridlauncher.ui.composables.StartHeader
 import tgo1014.gridlauncher.ui.composables.TileLayout
-import tgo1014.gridlauncher.ui.composables.jumpLetterOf
 import tgo1014.gridlauncher.ui.composables.sheets.TileSettingsBottomSheet
 import tgo1014.gridlauncher.ui.models.GridItem
 import tgo1014.gridlauncher.ui.models.SettingsEvent
@@ -96,39 +93,18 @@ fun GridScreenScreen(
         targetValue = if (inForeground) 1f else 0f,
         animationSpec = if (glass.motion) androidx.compose.animation.core.tween(200) else androidx.compose.animation.core.snap(),
         label = "Return")
-    val tableState = rememberLazyTableState()
-    // The first tile of every letter, in the grid's own visual order rather than its list order.
-    val anchors = remember(state.grid) {
-        LinkedHashMap<Char, GridItem>().apply {
-            state.grid.sortedBy { it.y * 1000 + it.x }.forEach { putIfAbsent(jumpLetterOf(it.app.name), it) }
-        }
-    }
     Column(Modifier.fillMaxSize().systemBarsPadding().graphicsLayer { alpha = returnAlpha }
         .focusRequester(focusRequester).focusable().onPreviewKeyEvent(::handleKey)) {
         Box(Modifier.fillMaxWidth().animateContentSize(if (glass.motion) spring(dampingRatio = .9f, stiffness = 350f) else snap())) {
             if (state.tileSettings.oneHanded) Spacer(Modifier.height(100.dp))
             StartHeader(visible = state.tileSettings.showStartHeader && !state.tileSettings.oneHanded)
         }
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-            // The rail only earns its width when every cell stays big enough to hit. One-handed mode
-            // pushes Start down into thumb reach, so a rail pinned to the top edge has no place there.
-            val rail = state.tileSettings.semiPanoramic && !state.tileSettings.oneHanded &&
-                maxWidth >= (RAIL_WIDTH_DP + state.tileSettings.gridColumns * MIN_TILE_DP).dp
-            Row(Modifier.fillMaxWidth()) {
-                if (rail) JumpRail(anchors, onJump = { tile ->
-                    if (glass.motion) tableState.animateToCell(tile.x, tile.y, tile.width, tile.height)
-                    else tableState.snapToCell(tile.x, tile.y, tile.width, tile.height)
-                }, modifier = Modifier.width(RAIL_WIDTH_DP.dp).fillMaxHeight())
-                Column(Modifier.weight(1f)) {
-                    TileLayout(grid = state.grid, columns = state.tileSettings.gridColumns, tileSettings = state.tileSettings,
-                        hazeState = hazeState, itemBeingEdited = state.itemBeingEdited, editingLayout = state.isEditingLayout,
-                        onItemLongClicked = onItemLongClicked, onItemClicked = onItemClicked, onItemDropped = onItemDropped,
-                        focusedId = focusedId, onFocusTile = { focusedId = it.id }, profile = state.profile,
-                        contentPadding = if (state.itemBeingEdited == null) PaddingValues(0.dp) else PaddingValues(bottom = 200.dp),
-                        state = tableState, modifier = Modifier.fillMaxWidth().weight(1f))
-                }
-            }
-        }
+        TileLayout(grid = state.grid, columns = state.tileSettings.gridColumns, tileSettings = state.tileSettings,
+            hazeState = hazeState, itemBeingEdited = state.itemBeingEdited, editingLayout = state.isEditingLayout,
+            onItemLongClicked = onItemLongClicked, onItemClicked = onItemClicked, onItemDropped = onItemDropped,
+            focusedId = focusedId, onFocusTile = { focusedId = it.id }, profile = state.profile,
+            contentPadding = if (state.itemBeingEdited == null) PaddingValues(0.dp) else PaddingValues(bottom = 200.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f))
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
             Hotseat(state.appList, state.tileSettings.hotseat, onOpenApp)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -146,7 +122,3 @@ fun GridScreenScreen(
         item = state.itemBeingEdited, onTileEvent = onTileEvent,
         )
 }
-
-private const val RAIL_WIDTH_DP = 36
-/** The narrowest a cell may get before the rail would cost more than the letters are worth. */
-private const val MIN_TILE_DP = 76
