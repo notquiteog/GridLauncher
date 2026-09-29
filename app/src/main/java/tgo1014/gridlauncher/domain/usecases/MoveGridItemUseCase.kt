@@ -1,24 +1,24 @@
 package tgo1014.gridlauncher.domain.usecases
 
 import kotlinx.coroutines.flow.first
-import tgo1014.gridlauncher.app.Constants
 import tgo1014.gridlauncher.domain.AppsManager
+import tgo1014.gridlauncher.domain.GridPlacement
 import tgo1014.gridlauncher.domain.models.Direction
 import javax.inject.Inject
 
+/** Moves a tile one whole cell, which is also what a drag resolves to. */
 class MoveGridItemUseCase @Inject constructor(
-    private val appsManager: AppsManager
+    private val appsManager: AppsManager,
 ) {
     suspend operator fun invoke(itemId: Int, direction: Direction, columns: Int = 3) = runCatching {
-        val currentGrid = appsManager.homeGridFlow.first()
-        val item = currentGrid.first { it.id == itemId }
-        val newGrid = currentGrid.filterNot { it.id == itemId }.toMutableList()
-        val newItem = when (direction) {
-            Direction.Up -> item.copy(y = (item.y - 1).coerceAtLeast(0))
+        val grid = appsManager.homeGridFlow.first()
+        val item = grid.firstOrNull { it.id == itemId } ?: return@runCatching
+        val moved = when (direction) {
+            Direction.Left -> item.copy(x = item.x - 1)
+            Direction.Right -> item.copy(x = item.x + 1)
+            Direction.Up -> item.copy(y = item.y - 1)
             Direction.Down -> item.copy(y = item.y + 1)
-            Direction.Left -> item.copy(x = (item.x - 1).coerceAtLeast(0))
-            Direction.Right -> item.copy(x = (item.x + 1).coerceAtMost(columns - item.width))
         }
-        appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(currentGrid, newItem, columns))
+        appsManager.setGrid(GridPlacement.update(grid, moved, columns))
     }
 }

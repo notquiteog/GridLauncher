@@ -7,14 +7,24 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tgo1014.gridlauncher.domain.models.Direction
 import tgo1014.gridlauncher.live.NotificationTiles
 import tgo1014.gridlauncher.ui.composables.NotificationActions
-import tgo1014.gridlauncher.ui.composables.NotificationPreview
 import tgo1014.gridlauncher.ui.models.GridItem
 import tgo1014.gridlauncher.ui.models.TileEvent
 import tgo1014.gridlauncher.ui.theme.LocalGlass
@@ -22,17 +32,35 @@ import tgo1014.gridlauncher.ui.theme.LocalGlass
 /** Long press opens actions. Movement is an explicit, separate choice; pinned positions are anchors. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onOpen: (GridItem) -> Unit = {}, onTileEvent: (TileEvent) -> Unit = {}) {
+fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEvent: (TileEvent) -> Unit = {}) {
     val context = LocalContext.current
     val glass = LocalGlass.current
     val notifications by NotificationTiles.notifications.collectAsStateWithLifecycle()
-    var preview by remember { mutableStateOf<GridItem?>(null) }
     var moving by remember(item?.id) { mutableStateOf(false) }
     if (isShowing && item != null) {
         ModalBottomSheet(onDismissRequest = { onTileEvent(TileEvent.OnTileSettingsSheetDismissed) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.app.name, style = MaterialTheme.typography.headlineLarge)
                 Text("Edit tile", style = MaterialTheme.typography.labelLarge)
+                if (!item.isGroup) {
+                    Text("Tile color", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val options = listOf<Long?>(null) + listOf(0xFF0078D7, 0xFF008A00, 0xFFB4009E, 0xFFD24726, 0xFF643EBF, 0xFF006D77, 0xFF1C1C1C)
+                        options.forEach { color ->
+                            val selected = item.tileColor == color
+                            Box(Modifier.size(36.dp)
+                                .background(if (color == null) Color.Transparent else Color(color))
+                                .border(1.dp, if (selected) Color.White else Color.White.copy(alpha = .35f), RectangleShape)
+                                .clickable { onTileEvent(TileEvent.OnTileColorChanged(color)) }
+                                .semantics { contentDescription = if (color == null) "Tile color Auto" else "Tile color ${"%06X".format(color and 0xFFFFFF)}" },
+                                contentAlignment = Alignment.Center) {
+                                if (color == null) Text("Auto", color = glass.ink, fontSize = 9.sp, textAlign = TextAlign.Center)
+                                if (selected) Text("✓", color = if (color == null || Color(color).luminance() > .5f) Color.Black else Color.White)
+                            }
+                        }
+                    }
+                    Text("Auto uses the dominant color of the app's own icon.", style = MaterialTheme.typography.bodySmall)
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Pin position", modifier = Modifier.padding(top = 12.dp))
                     Switch(checked = item.positionPinned, onCheckedChange = { onTileEvent(TileEvent.OnTogglePositionPin) })
@@ -54,5 +82,4 @@ fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onOpen: 
             }
         }
     }
-    preview?.let { tile -> NotificationPreview(tile.app.name, (listOf(tile.app.packageName) + tile.children.map { it.packageName }).toSet(), { preview = null }) }
 }

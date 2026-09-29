@@ -43,7 +43,12 @@ object GridPlacement {
         if (original?.positionPinned == true && (item.x != original.x || item.y != original.y)) return grid
         val pinned = anchors(grid.filterNot { it.id == item.id }, columns)
         if (original?.positionPinned == true && (item.x + item.width > columns || pinned.any { overlaps(it, item) })) return grid
-        val requested = if (item.positionPinned) item else place(item, pinned, columns)
+        // A deliberate move keeps the cell it was dropped on; only a pinned neighbour can refuse it.
+        val width = item.width.coerceIn(1, columns)
+        val bounded = item.copy(
+            width = width, height = item.height.coerceIn(1, 4),
+            x = item.x.coerceIn(0, (columns - width).coerceAtLeast(0)), y = item.y.coerceAtLeast(0))
+        val requested = if (item.positionPinned || pinned.none { overlaps(it, bounded) }) bounded else place(bounded, pinned, columns)
         val result = (pinned + requested).toMutableList()
         grid.filterNot { it.id == item.id || it.positionPinned }.sortedWith(compareBy({ it.y }, { it.x })).forEach { result += place(it, result, columns) }
         return result.sortedWith(compareBy({ it.y }, { it.x }))

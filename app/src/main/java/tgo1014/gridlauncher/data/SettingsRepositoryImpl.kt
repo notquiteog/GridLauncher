@@ -9,6 +9,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tgo1014.gridlauncher.domain.SettingsRepository
 import tgo1014.gridlauncher.domain.models.TileSettings
+import tgo1014.gridlauncher.ui.models.GridItem
 import javax.inject.Inject
 
 class SettingsRepositoryImpl @Inject constructor(
@@ -25,16 +26,25 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateSettings(tileSettings: TileSettings) {
-        dataStore.edit {
-            migrateStoredGrids(it, json)
-            val safe = tileSettings.copy(tilesAcross = tileSettings.tilesAcross.coerceIn(2, 6), cornerRadius = 0)
-            val old = runCatching { json.decodeFromString<TileSettings>(it[key]!!) }.getOrDefault(TileSettings())
-            if (old.gridColumns != safe.gridColumns) profileNames.forEach { name ->
-                val gridKey = profileGridKey(name)
-                val grid = runCatching { json.decodeFromString<List<tgo1014.gridlauncher.ui.models.GridItem>>(it[gridKey]!!) }.getOrDefault(emptyList())
-                if (it[gridKey] != null) it[gridKey] = json.encodeToString(tgo1014.gridlauncher.domain.GridPlacement.reflow(grid, safe.gridColumns))
+        val safe = tileSettings.copy(tilesAcross = tileSettings.tilesAcross.coerceIn(2, 6))
+        dataStore.edit { prefs ->
+            migrateStoredGrids(prefs, json)
+            val old = runCatching { json.decodeFromString<TileSettings>(prefs[key]!!) }.getOrDefault(TileSettings())
+            if (old.gridColumns != safe.gridColumns) prefs.gridKeyNames().forEach { name ->
+                val gridKey = stringPreferencesKey(name)
+                if (prefs[gridKey] == null) return@forEach
+                val grid = runCatching { json.decodeFromString<List<GridItem>>(prefs[gridKey]!!) }.getOrDefault(emptyList())
+                // Narrowing must never fail the write: an anchor that no longer fits is unpinned.
+                prefs[gridKey] = json.encodeToString(reflowSafely(grid, safe.gridColumns))
             }
-            it[key] = json.encodeToString(safe)
+            prefs[key] = json.encodeToString(safe)
         }
+    }
+
+    /** Same packing as GridPlacement, except an impossible anchor is dropped instead of throwing. */
+    internal fun reflowSafely(grid: List<GridItem>, columns: Int): List<GridItem> = runCatching {
+        tgo1014.gridlauncher.domain.GridPlacement.reflow(grid, columns)
+    }.getOrElse {
+        tgo1014.gridlauncher.domain.GridPlacement.reflow(grid.filterNot { it.positionPinned }, columns)
     }
 }

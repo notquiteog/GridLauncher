@@ -57,11 +57,8 @@ fun Bitmap.reduceBitmapBrightness(): Bitmap {
     val paint = Paint().apply {
         colorFilter = ColorMatrixColorFilter(matrix)
     }
-    val newBitmap = Bitmap.createBitmap(
-        this.width,
-        this.height,
-        this.config!!
-    )
+    // A hardware bitmap has no readable config, so always work on an ARGB copy.
+    val newBitmap = Bitmap.createBitmap(this.width, this.height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(newBitmap)
     canvas.drawBitmap(this, 0f, 0f, paint)
     return newBitmap

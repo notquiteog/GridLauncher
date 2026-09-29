@@ -6,10 +6,27 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <queries><intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent></queries>
+    <!-- Photos hub. Android 13 splits images out; older releases use the legacy permission. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- Quiet hours and meeting mode. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <queries>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+        <intent><action android:name="android.intent.action.MEDIA_PLAYER" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:mimeType="image/*" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:mimeType="audio/*" /></intent>
+        <intent><action android:name="android.intent.action.VIEW" /><data android:mimeType="video/*" /></intent>
+        <intent><action android:name="android.intent.action.DIAL" /><data android:scheme="tel" /></intent>
+        <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent>
+        <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="mailto" /></intent>
+        <intent><action android:name="android.content.pm.action.CONFIRM_PIN_SHORTCUT" /></intent>
+    </queries>
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <!--    <uses-permission android:name="android.permission.BIND_APPWIDGET" />-->
 
+    <!-- Backups stay off on purpose: the stored grid contains the pinned people a user chose. -->
     <application
         android:name=".app.GridLauncherApplication"
         android:allowBackup="false"
@@ -47,8 +64,17 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".live.GridLiveTileProvider"
+            android:exported="true"
+            android:label="@string/widget_live_tile_label">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/grid_live_tile_info" />
+        </receiver>
+        <receiver android:name=".live.ActionReceiver" android:exported="false" />
+
         <service android:name=".live.LiveNotificationService"
-            android:label="GridLauncher live tiles"
+            android:label="@string/live_tile_service"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>

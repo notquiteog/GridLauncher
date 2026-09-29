@@ -6,7 +6,7 @@ A native Kotlin / Jetpack Compose launcher combining Windows Phone's information
 
 Download **GridLauncher-Android17.apk** from [Releases](https://github.com/notquiteog/GridLauncher/releases), or the APK artifact of a successful [Actions build](https://github.com/notquiteog/GridLauncher/actions/workflows/android.yml). In **Customize Start**, select **Set as default home app**. Android requires the home role to expose app shortcuts.
 
-- Android 8.0 or later; compile/target SDK **37 / Android 17**.
+- **Android 17 only.** compile/target/min SDK **37**. Every legacy code path has been removed rather than guarded.
 - Package: `io.github.notquiteog.gridlauncher`.
 - Official releases use a persistent private signing key and support in-place updates. Development/PR builds have a different key.
 
@@ -16,44 +16,73 @@ GitHub/sideload builds check the latest stable release when the launcher resumes
 
 The updater checks Android's installing/initiating package and update owner; Play installs never use the GitHub updater. Android does not reliably retain the original download website for sideloads, so the GitHub distribution includes other sideloads too. A Play build uses `-PdistributionChannel=play`, which disables the updater and removes its package-install permission from the manifest. Debug builds check only on manual request. CI publishes `update.json` from the actual signed APK alongside the APK and checksum, completing the draft release before making it visible.
 
+## Layouts
+
+Personal, Work and Travel always exist. **Create your own** with **New** in the All apps header: a new layout either copies your current tiles or starts empty, becomes active immediately, and is capped at 12 custom layouts. **Long press your own layout** to rename or delete it; deleting removes its tiles for good, so copy it somewhere first. Personal, Work and Travel are never renamed or deleted, because the Work schedule refers to them by name. Layout names are trimmed to 40 characters, stripped of control characters, and may not shadow a built-in name.
+
+Every layout keeps its own tiles. **Copy to …** in Customize Start copies the current arrangement over another layout, with confirmation. Choosing a layout by hand turns the weekday Work schedule off; the schedule itself supports overnight shifts anchored to the evening they start. These are launcher layouts, not Android managed work profiles.
+
+Maintenance work (column changes, whole-cell migration, pruning uninstalled apps, finding orphaned widgets) walks every stored grid key, so a damaged layout list can never strand a layout.
+
 ## Start and editing
 
-- Home contains only tiles/widgets and a small All apps link fixed at the bottom. The date, Edit layout, settings, layout switcher and Now area live in All apps. Choosing Edit layout or another layout returns to Home; Android Back exits editing.
-
-- Square, edge-to-edge flat tiles with no gaps, gradients, blur or borders. Each app tile uses the dominant opaque outer-edge color of its default icon; transparent margins are ignored. Labels switch between black and white for contrast. Built-in tiles use the accent color; photo/widget content retains its own appearance. Choose **2–6 cells across**, default **3**. All positions and sizes use whole cells; existing 2.0 layouts migrate automatically.
+- A **hotseat** holds up to four apps at the foot of Start, with a search pill and a way into Customize Start. It sits outside the tile grid, so packing, pinning and the tile width never move it.
+- A **Frequent** row above the alphabetical list offers the apps you actually open, counted locally by `UsageTracker`. Only package names are stored, never timestamps, and a hub tile is not counted as an app launch.
+- Home holds tiles and widgets only. A semi-panoramic header carries the date, large at the top of the grid and shrinking and fading as you scroll. A **Quiet** marker appears while quiet hours or meeting mode are on. The date, **Ask**, Edit layout, settings, the layout chips and the Now area live in All apps. Choosing Edit layout or another layout returns to Home; Android Back exits editing.
+- Square, edge-to-edge flat tiles with no gaps, gradients, blur or borders. Each app tile uses the dominant opaque outer-edge color of its default icon; transparent margins are ignored. Labels switch between black and white for contrast. Built-in tiles use the accent color; photo/widget content retains its own appearance. **Tile color** in Edit tile overrides the icon's own color, with **Auto** to go back. Choose **2–6 cells across**, default **3**. All positions and sizes use whole cells; existing 2.0 layouts migrate automatically.
 - Large, unmodified Android app icons, including their original adaptive backgrounds. No replacement icon packs or foreground-only recoloring.
 - **Long press** an app tile for its Android-published dynamic/manifest shortcuts and app info. These are actual app actions, not a layout-edit gesture. Apps decide which actions they provide.
-- Open **All apps → Edit layout**, then tap a tile, to resize, move, remove or **Pin position**. Use Android Back, or All apps → Done, to leave editing. Movement uses whole-cell directions. Pinned positions are fixed anchors; removing a tile packs unpinned tiles into free spaces. Narrowing the grid refuses to displace a pinned tile that would no longer fit.
+- Open **All apps → Edit layout**. **Drag a tile** to move it: it lifts, casts a shadow and lands on the cell you release it over, snapping to whole cells. Arrow keys, Tab, Enter and the directional buttons in Edit tile work too. Tap a tile to resize, remove, recolour or **Pin position**. A pinned tile refuses to move and stays fixed as anchors when other tiles are added or removed; narrowing the grid refuses to displace a pinned tile that would no longer fit.
 - Tile/widget dimensions include **1×1, 1×2, 2×1, 2×2**, and larger whole-cell rectangles that fit the selected width. An Android widget's own content may need a larger size to be useful.
-- Personal, Work and Travel have separate persistent arrangements. Copy a layout with confirmation, or enable a weekday Work schedule with chosen hours (including overnight shifts). Manual selection disables scheduling. These are launcher layouts, not Android managed work profiles.
-- Spring movement/resizing and press feedback, perspective live-tile updates, animated Now expansion, native sheets and panoramic Start/app-list paging. Reduce motion, system animation settings and battery saver suppress decorative motion; battery saver also uses solid surfaces.
-- Frosted, Clear and Solid materials for surrounding controls, wallpaper-derived tint, accent colors, light/dark themes, optional labels, and one-handed spacing. Dark app-list text is explicitly white.
+- **Group headers** span the full width of the grid to divide sections, and keep their position through every reflow. **Folders** can hold other folders; open one, then open the inner one to drill down, and **Up** steps back out.
+- **Now Playing** reads the system's real media session: album art, title, artist and transport, updating as playback changes.
+- **Frosted, Clear, Acrylic and Solid** materials for surrounding controls, wallpaper-derived tint, accent colors, light/dark themes, optional labels, and one-handed spacing. Acrylic is the sharpest, Frosted the softest. Dark app-list text is explicitly white.
+- On a large screen or desktop window (840dp and wider) Start and All apps sit side by side, the Continuum gesture expressed through real windowing instead of a hardware category. Touch layouts keep the single-column Start/All apps pager.
 
 ## Live information and actions
 
-Enable **Manage notification access** for counts. Turn on **Show notification previews** to display content, and use per-app preview controls to exclude individual apps.
+Enable **Manage notification access** for counts and live text. Notification text now ships **on** by default; per-app exclusions, the device lock state and quiet hours still apply.
 
 - Tiles show real notification titles, message text, artwork, counts, progress and available actions. Tap a count to expand the notification preview. MessagingStyle conversations include recent messages and sender identity. Direct reply is available only when the app publishes a RemoteInput action.
+- **Wide tiles stack** what else is waiting underneath the newest item, in the style of the Android 17 notification stack, instead of hiding it behind a count.
 - **Now** in All apps surfaces ongoing media, progress, navigation and timer notifications without rearranging pinned tiles. Finished/dismissed notifications disappear. Android 17 semantic annotations supply caution/urgent/safe labels and colors when the source app provides them.
 - Folder tiles aggregate counts and expand inline into live app tiles.
-- Clock, calendar, favorite People mosaics and battery/charging tiles. Calendar/favorites use optional read permissions; denial does not prevent using the launcher.
-- **Choose people** uses Android 17's contact picker (a phone picker fallback on older Android). Only selected names, numbers and emails are stored locally. Pin one person or a group; call/message/email through the appropriate Android app. Contact pictures appear for favorite contacts when contact access is granted; otherwise tiles show initials. Notification matching uses app-supplied person URIs, so it cannot reliably link every app's conversations.
-- Photo tiles rotate up to 20 photo-picker selections. Native Android widgets use the normal bind/configure flow.
+- Clock, **Music**, **Photos**, People, **Battery** and **Storage** built-ins. Calendar and favourites use optional read permissions; denial does not prevent using the launcher. Battery reports charge, charge cycles, time to full and temperature. Storage reports used and free space from `StatFs`.
+- **The Photos hub** rotates your own recent library, or the photos you picked, and honours both a full media grant and Android 14's "selected photos" grant. **The People hub** folds every visible conversation onto the people you chose, newest first, with call, message and email, and a long-press drag that drops a number or address straight into any other app. Conversation matching uses app-supplied person URIs, so an app that does not identify its sender has no row.
+- **Choose people** uses Android 17's contact picker (a phone picker fallback on older Android). Only selected names, numbers and emails are stored locally. Pin one person or a group. Contact pictures appear for favourite contacts when contact access is granted; otherwise tiles show initials.
 - Pin app destinations from **All apps → long press → Pin: shortcut**, or accept an app's Android pin request. Websites, geo links and documents can also be pinned in Customize Start.
 
-Notifications and PendingIntent action tokens are memory-only: never logged, uploaded or included in backups. Preview content/actions require opt-in and an unlocked device; per-app exclusions also apply. Secret notifications and group summaries are omitted. Android may redact data before delivery. Counts represent active notifications, not server unread counts.
+## Ask Start
+
+**Ask** in the All apps header opens Cortana's role, rebuilt from what a launcher can honestly know. A small, deterministic intent matcher answers questions about your calendar, your notifications, battery, storage, what is playing, the time, and call/message/email actions for a named contact. The same query also returns ranked results across apps, your Start tiles, people, notifications, about two dozen curated Android settings screens, and a DuckDuckGo web search as a last resort. **Voice** hands the question to the system recognizer.
+
+No model is involved, nothing leaves the device, and the same question always produces the same answer. Every answer points at a real item. Turn web results off in Customize Start if you would rather never leave the device.
+
+## The live-tile widget
+
+**Add live tile to your home screen** places a GridLauncher widget on the system's own home screen, so the live-tile idea survives switching launchers. It is a resizable `RemoteViews` surface: the newest notification's app, title and text, a progress bar, the stack of what else is waiting on a larger widget, and up to two real notification actions. It follows exactly the same rules as the in-app tiles — opt-in, per-app exclusions, quiet hours, locked-device privacy — and its actions go through the same guarded path that rejects a stale or dismissed notification.
+
+## Quiet hours and meeting mode
+
+**Meeting mode** silences Start immediately: no counts, no live text, no inline actions, no Now board, and a **Quiet** marker. **Quiet hours** does the same on a schedule, including overnight windows. Granting Android's Do Not Disturb access additionally silences notifications system-wide; without it Start still keeps its own schedule, and Android's own settings remain the user's to control.
+
+## Materials, theme packs and keyboard
+
+A **theme pack** is a short, hand-typable code carrying accent, material, tile width and live-tile behaviour — the shareable part of a theme, never your apps. Copy one in Customize Start and paste it into someone else's launcher; a malformed code is rejected rather than guessed. A hardware keyboard or trackpad moves a focus ring across the grid with the arrow keys and Tab, and Enter opens the focused tile.
 
 ## Cross-device continuation
 
-On Android 17, **Continue Start on another device** opts the current activity into the public Handoff API. It transfers only the selected layout name; the receiving device opens its own matching layout. It requires compatible system support and GridLauncher on both devices.
+On Android 17, **Continue Start on another device** opts the current activity into the public Handoff API. It transfers the selected layout name and the tile you were last on; the receiving device opens its own matching layout, and only if it still has it. It requires compatible system support and GridLauncher on both devices.
 
-The public Android 17 SDK exposes activity Handoff publishing and restoration, but no general third-party-launcher feed of other apps' nearby activities. This project does not fake a nearby-app suggestion feed. Two-device transport still needs physical-device verification; tests cover the data contract. Sources: [Android Handoff](https://developer.android.com/develop/better-together/continue-on/enable-support), [contact picker](https://developer.android.com/about/versions/17/features/contact-picker).
+The public Android 17 SDK exposes activity Handoff publishing and restoration, but no general third-party-launcher feed of other apps' nearby activities, and Handoff gives no device identity to build a trustworthy device list from. This project does not fake a nearby-app suggestion feed or a roster of devices it cannot actually see. Two-device transport still needs physical-device verification; tests cover the data contract. Sources: [Android Handoff](https://developer.android.com/develop/better-together/continue-on/enable-support), [contact picker](https://developer.android.com/about/versions/17/features/contact-picker).
 
 ## Backup and limits
 
-Explicit JSON export backs up the current layout's portable app/built-in/folder tiles and appearance. Restore confirms replacement, validates, rehydrates installed apps and repacks. Device-bound widgets, selected contacts/photos, documents and pinned shortcuts must be selected again; wallpaper must be selected again. Automatic cloud/device backup is disabled to avoid copying contact snapshots and device-bound grants.
+Explicit JSON export backs up the current layout's portable tiles and appearance, the names of all your layouts, and a theme-pack code. Restore confirms replacement, validates, recreates missing layouts, rehydrates installed apps and repacks; a theme code in the file is applied when present. Device-bound widgets, selected contacts/photos, documents and pinned shortcuts must be selected again; wallpaper must be selected again. Backups from versions 1 and 2 still restore.
 
-A launcher cannot replace Android's lock screen, system quick settings, recents or third-party app UI. Cortana, Windows services and Continuum are not reproduced. Media/weather are sourced from notifications or installed widgets; no mock weather or fabricated activity is shipped.
+Automatic cloud and device transfer stay **off** deliberately: the stored grid contains the names, numbers and addresses of the people you pinned, and copying that to a cloud backup is not a decision a launcher should make for you. The on-demand export is the supported path, and it filters those tiles out. If you enable Android backup yourself, treat the app's data as personal.
+
+A launcher cannot replace Android's lock screen, system quick settings, recents, the notification shade or third-party app UI, and GridLauncher does not try: notification history and the notification center are Android's job, so Start shows live information on its tiles and nothing more. Cortana's voice assistant, the Windows Store, Windows services and Continuum-as-hardware are not reproduced. Media, people, photos, storage and weather are sourced from notifications, the system media session, your own library or installed widgets; no mock weather, no fabricated activity, no guessed intent actions.
 
 ## Build
 
@@ -84,4 +113,4 @@ scripts/setup-android.sh emulator
 scripts/emulator-test.sh
 ```
 
-The script expects an already-built release APK and Linux KVM. Tests cover actual notification delivery and RemoteInput, privacy, semantic progress, white app-list text, dedicated edit/native-menu separation, pinning, column/profile persistence, Handoff payloads and core launcher flows. Unit tests exercise randomized packing, pinned anchors, compaction, migration, backup validation and schedules. OEM-specific rendering, performance and two-device Handoff still need hardware testing.
+The script expects an already-built release APK and Linux KVM. Unit tests cover randomized packing, pinned anchors, compaction, migration, header packing, layout-name sanitising, quiet-hour windows, theme-pack round trips and rejection, grid keyboard navigation, backup validation, and the Ask Start and search engines including their fallbacks. Device tests cover actual notification delivery and RemoteInput, privacy, semantic progress, white app-list text, dedicated edit/native-menu separation, pinning, drag-to-reorder including a pinned tile refusing to move, creating/renaming/deleting a custom layout, group headers and per-tile colours surviving a restart, quiet hours, theme packs, the hotseat surviving a column change, the frequent row, and the Android 17 contact picker and Handoff payload. `realAndroidWidgetCanResizeToWholeCellRectangles` is known to fail on some emulator images before it interacts with the launcher, and is the one outstanding item. OEM-specific rendering, media-session behaviour, the home-screen widget on an OEM shell, and two-device Handoff still need hardware testing.

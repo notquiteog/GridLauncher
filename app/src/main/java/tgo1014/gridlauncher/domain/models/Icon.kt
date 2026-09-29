@@ -1,11 +1,13 @@
 package tgo1014.gridlauncher.domain.models
 
-import com.materialkolor.ktx.isLight
 import kotlinx.serialization.Serializable
-import tgo1014.gridlauncher.data.getDominantColor
-import tgo1014.gridlauncher.data.toBitmap
 import java.io.File
 
+/**
+ * A cached copy of the app's own, unmodified default icon plus the opaque colour of its outer
+ * edge, which becomes the flat tile colour. `bgFilePath` is kept only so older stored layouts
+ * still decode; no replacement background has been shipped since the first release.
+ */
 @Serializable
 data class Icon(
     val iconFilePath: String? = null,
@@ -13,10 +15,4 @@ data class Icon(
     val edgeColor: Long? = null,
 ) {
     val iconFile: File? get() = iconFilePath?.let { File(it) }
-    val bgFile: File? get() = bgFilePath?.let { File(it) }
-    val isLightBackground
-        get() = bgFile
-            ?.toBitmap()
-            ?.getDominantColor()
-            ?.isLight() == true
 }

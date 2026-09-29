@@ -13,6 +13,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -34,6 +37,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var appsManager: AppsManager
     @Inject lateinit var settingsRepository: tgo1014.gridlauncher.domain.SettingsRepository
     @Inject lateinit var profiles: tgo1014.gridlauncher.data.LayoutProfiles
+    @Inject lateinit var usage: tgo1014.gridlauncher.data.UsageTracker
     val updater: tgo1014.gridlauncher.updates.GitHubUpdater by viewModels()
     private val allowUpdates = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (packageManager.canRequestPackageInstalls()) installGitHubUpdate()
@@ -56,7 +60,13 @@ class MainActivity : ComponentActivity() {
     private val exportDocument = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) lifecycleScope.launch {
             runCatching {
-                val backup = tgo1014.gridlauncher.live.LayoutBackup(tiles = appsManager.homeGridFlow.first().filter { it.contact == null && it.contacts.isEmpty() && it.destination == null && it.shortcutId == null && it.widgetId < 0 && it.photoUris.isEmpty() }, settings = settingsRepository.tileSettingsFlow.first())
+                val settings = settingsRepository.tileSettingsFlow.first()
+                fun portable(grid: List<tgo1014.gridlauncher.ui.models.GridItem>) = grid.filter { it.contact == null && it.contacts.isEmpty() && it.destination == null && it.shortcutId == null && it.widgetId < 0 && it.photoUris.isEmpty() }
+                val everyLayout = profiles.allGrids().mapValues { (_, grid) -> portable(grid) }
+                val backup = tgo1014.gridlauncher.live.LayoutBackup(
+                    tiles = portable(appsManager.homeGridFlow.first()),
+                    settings = settings, layouts = profiles.layouts.first(),
+                    theme = tgo1014.gridlauncher.live.ThemePacks.encode(settings), layoutGrids = everyLayout)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(backupJson.encodeToString(tgo1014.gridlauncher.live.LayoutBackup.serializer(), backup)) }
                         ?: error("Cannot write backup")
@@ -76,11 +86,16 @@ class MainActivity : ComponentActivity() {
                     } ?: error("Cannot read backup")
                     backupJson.decodeFromString(tgo1014.gridlauncher.live.LayoutBackup.serializer(), bytes.decodeToString())
                 }
-                val restored = backup.restore(appsManager.installedAppsFlow.first())
+                profiles.importCustom(backup.layouts)
+                val installed = appsManager.installedAppsFlow.first()
+                val restored = backup.allGrids().mapValues { (_, grid) -> backup.restore(listOf(), grid, installed) }
                 val previous = appsManager.homeGridFlow.first()
-                appsManager.setGrid(restored)
+                appsManager.setGrid(restored[profiles.active.first()] ?: backup.restore(installed))
+                if (restored.isNotEmpty()) profiles.replaceGrids(restored)
                 previous.filter { it.widgetId >= 0 }.forEach { if (!profiles.widgetInUse(it.widgetId)) widgetHost.deleteAppWidgetId(it.widgetId) }
-                settingsRepository.updateSettings(backup.settings.copy(wallpaperPath = null, cornerRadius = 0))
+                val themed = backup.theme.takeIf { it.isNotBlank() }?.let(tgo1014.gridlauncher.live.ThemePacks::decode)
+                settingsRepository.updateSettings((themed?.let { tileSettings -> tileSettings.copy(wallpaperPath = null) }
+                    ?: backup.settings.copy(wallpaperPath = null)))
             }.onSuccess { message("Layout restored. Re-add photos and widgets if needed.") }.onFailure { message("Restore failed: ${it.message}") }
         }
     }
@@ -146,11 +161,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         lifecycleScope.launch { settingsRepository.tileSettingsFlow.collect { settings ->
-            if (android.os.Build.VERSION.SDK_INT >= 37) setHandoffEnabled(settings.handoffEnabled, android.app.HandoffActivityParams.Builder().build())
+            setHandoffEnabled(settings.handoffEnabled, android.app.HandoffActivityParams.Builder().build())
         } }
         receiveHandoff(intent)
         receivePinRequest(intent)
-        setContent { GridLauncherTheme { HomeScreen(homeViewModel); tgo1014.gridlauncher.updates.UpdatePrompt(updater, this) } }
+        setContent {
+            val settings by settingsRepository.tileSettingsFlow.collectAsState(initial = tgo1014.gridlauncher.domain.models.TileSettings())
+            GridLauncherTheme(accent = androidx.compose.ui.graphics.Color(settings.accentColor.toInt()), dark = settings.darkTheme) {
+                HomeScreen(homeViewModel)
+                tgo1014.gridlauncher.updates.UpdatePrompt(updater, this)
+            }
+        }
     }
     override fun onSaveInstanceState(outState: Bundle) { outState.putInt("pendingWidget", pendingWidget); super.onSaveInstanceState(outState) }
     override fun onStart() {
@@ -161,7 +182,11 @@ class MainActivity : ComponentActivity() {
         androidx.core.content.ContextCompat.registerReceiver(this, packageUpdates, filter, androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
     }
     override fun onStop() { unregisterReceiver(packageUpdates); widgetHost.stopListening(); super.onStop() }
-    override fun onResume() { super.onResume(); updater.check(); lifecycleScope.launch { updateAppListUseCase() } }
+    override fun onResume() {
+        super.onResume(); updater.check()
+        tgo1014.gridlauncher.live.MediaTiles.refresh(this)
+        lifecycleScope.launch { updateAppListUseCase() }
+    }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveHandoff(intent); receivePinRequest(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
 
     private fun receivePinRequest(intent: Intent?) {
@@ -183,20 +208,21 @@ class MainActivity : ComponentActivity() {
             }.show()
     }
 
-    @androidx.annotation.RequiresApi(37)
     override fun onHandoffActivityDataRequested(requestInfo: android.app.HandoffActivityDataRequestInfo): android.app.HandoffActivityData =
         android.app.HandoffActivityData.Builder(android.content.ComponentName(this, MainActivity::class.java))
-            .setExtras(android.os.PersistableBundle().apply { putString("grid.profile", homeViewModel.stateFlow.value.profile) }).build()
+            .setExtras(android.os.PersistableBundle().apply {
+                putString("grid.profile", homeViewModel.stateFlow.value.profile)
+                homeViewModel.stateFlow.value.grid.firstOrNull { it.id == homeViewModel.stateFlow.value.handoffFocus }?.let { putInt("grid.focus", it.id) }
+            }).build()
     private fun receiveHandoff(intent: Intent?) {
-        intent?.getStringExtra("grid.profile")?.takeIf { it in tgo1014.gridlauncher.data.profileNames }?.let { name -> homeViewModel.selectProfile(name) }
+        val name = intent?.getStringExtra("grid.profile")?.takeIf { it.isNotBlank() } ?: return
+        homeViewModel.adoptHandoffLayout(name, intent.getIntExtra("grid.focus", -1).takeIf { it >= 0 })
     }
 
     fun chooseDefaultLauncher() {
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
-            val roles = getSystemService(RoleManager::class.java)
-            if (roles.isRoleAvailable(RoleManager.ROLE_HOME) && !roles.isRoleHeld(RoleManager.ROLE_HOME)) {
-                startActivity(roles.createRequestRoleIntent(RoleManager.ROLE_HOME)); return
-            }
+        val roles = getSystemService(RoleManager::class.java)
+        if (roles.isRoleAvailable(RoleManager.ROLE_HOME) && !roles.isRoleHeld(RoleManager.ROLE_HOME)) {
+            startActivity(roles.createRequestRoleIntent(RoleManager.ROLE_HOME)); return
         }
         startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
     }

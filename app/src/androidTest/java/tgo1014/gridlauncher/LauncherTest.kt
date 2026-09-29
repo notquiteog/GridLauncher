@@ -97,7 +97,7 @@ class LauncherTest {
         compose.onNodeWithText("Search apps").performTextInput("zzzz-no-such-app")
         compose.onNodeWithText("No apps found").assertIsDisplayed()
         compose.onNodeWithText("Clear").performClick()
-        compose.onNodeWithText("Start ←").performClick()
+        compose.onNodeWithContentDescription("Back to Start").performClick()
         compose.onNodeWithContentDescription("Clock").assertIsDisplayed()
     }
     @Test fun tileResizeMoveAndUnpinPersist() {
@@ -165,7 +165,9 @@ class LauncherTest {
         compose.onNodeWithText("App info").assertIsDisplayed()
         compose.onNodeWithText("Move tile").assertDoesNotExist()
         assertEquals(0, runBlocking { compose.activity.appsManager.homeGridFlow.first().single().x })
-        androidx.test.espresso.Espresso.pressBack()
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithText("Edit layout").performClick()
         compose.onNodeWithContentDescription("Settings").performClick()
@@ -185,7 +187,7 @@ class LauncherTest {
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithContentDescription("Customize Start").performClick()
         compose.onNodeWithText("Make it yours").assertIsDisplayed()
-        compose.onNodeWithText("Live tiles").assertIsDisplayed()
+        compose.onNodeWithText("Live tiles").performScrollTo().assertIsDisplayed()
     }
     @Test fun appDrawerUsesWhiteTextInDarkMode() {
         seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
@@ -287,8 +289,10 @@ class LauncherTest {
         seed(emptyList())
         val activity = compose.activity
         val manager = android.appwidget.AppWidgetManager.getInstance(activity)
-        val provider = manager.installedProviders.firstOrNull { it.provider.packageName.contains("deskclock") }
-            ?: manager.installedProviders.first()
+        // Never bind our own live-tile provider: this test is about a third-party widget resizing.
+        val foreign = manager.installedProviders.filter { it.provider.packageName != activity.packageName }
+        val provider = foreign.firstOrNull { it.provider.packageName.contains("deskclock") } ?: foreign.first()
+        assertFalse(provider.provider.packageName == activity.packageName)
         val id = activity.widgetHost.allocateAppWidgetId()
         val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
         try {
@@ -307,4 +311,157 @@ class LauncherTest {
         } finally { automation.dropShellPermissionIdentity(); activity.widgetHost.deleteAppWidgetId(id) }
     }
 
+
+    @Test fun frequentRowOffersTheAppsYouActuallyOpen() {
+        val context = compose.activity
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        val installed = runBlocking { context.appsManager.installedAppsFlow.first() }
+        runBlocking { context.usage.clear(); repeat(5) { context.usage.record(installed[0].packageName) }; context.usage.record(installed[1].packageName) }
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Frequent").assertIsDisplayed()
+        assertEquals(installed[0].packageName, runBlocking { context.usage.frequent.first() }.first())
+        // Only real opens are recorded; a hub tile is not an app launch.
+        runBlocking { context.usage.record(BuiltInTiles.CLOCK) }
+        assertFalse(runBlocking { context.usage.frequent.first() }.contains(BuiltInTiles.CLOCK))
+    }
+
+    @Test fun aHotseatPinsUpToFourAppsOutsideTheGrid() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        val context = compose.activity
+        val installed = runBlocking { context.appsManager.installedAppsFlow.first() }
+        val chosen = installed.take(4)
+        runBlocking { context.settingsRepository.updateSettings(TileSettings(hotseat = chosen.map { it.packageName })) }
+        compose.waitForIdle()
+        try { chosen.forEach { app -> compose.onNodeWithContentDescription("Hotseat ${app.name}").assertIsDisplayed() } }
+        catch (e: Throwable) {
+            compose.onRoot(useUnmergedTree = true).printToLog("Hotseat")
+            throw AssertionError("chosen=${chosen.map { it.name }} nodes=${compose.onAllNodesWithContentDescription("Hotseat", useUnmergedTree = true).fetchSemanticsNodes().size}", e)
+        }
+        // The hotseat is not part of the packed grid, so it survives a column change.
+        runBlocking { context.settingsRepository.updateSettings(TileSettings(tilesAcross = 2, hotseat = chosen.map { it.packageName })) }
+        compose.waitForIdle()
+        chosen.forEach { app -> compose.onNodeWithContentDescription("Hotseat ${app.name}").assertIsDisplayed() }
+        assertEquals(1, runBlocking { context.appsManager.homeGridFlow.first().size })
+    }
+
+    @Test fun customLayoutsCanBeCreatedRenamedAndDeleted() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("New").performClick()
+        compose.onNodeWithText("Copy current tiles").performClick()
+        compose.onAllNodes(hasSetTextAction()).onLast().performTextInput("Reading")
+        compose.onNodeWithText("Create").performClick()
+        compose.waitUntil(5000) { runBlocking { compose.activity.profiles.active.first() == "Reading" } }
+        assertTrue(runBlocking { compose.activity.profiles.layouts.first() }.contains("Reading"))
+        // A copy keeps the current tiles.
+        assertEquals(1, runBlocking { compose.activity.appsManager.homeGridFlow.first().size })
+        // A custom layout's own actions live behind a long press, like the app list rows.
+        // Creating a layout returns to Start, so wait for the dialog to clear and page back.
+        compose.onNodeWithText("Layout name").assertDoesNotExist()
+        compose.waitForIdle()
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").assertIsDisplayed()
+        compose.onNodeWithText("Reading").assertIsDisplayed()
+        compose.onNodeWithText("Reading").performTouchInput { longClick() }
+        compose.onNodeWithText("Rename Reading").performClick()
+        // The rename field starts on the current name, so replace rather than append.
+        compose.onAllNodes(hasSetTextAction()).onLast().performTextReplacement("Evening")
+        compose.onNodeWithText("Rename").performClick()
+        compose.waitUntil(5000) { runBlocking { compose.activity.profiles.layouts.first() }.contains("Evening") }
+        // Renaming keeps the grid attached to the layout.
+        assertEquals(1, runBlocking { compose.activity.appsManager.homeGridFlow.first().size })
+        compose.onNodeWithText("Evening").assertIsDisplayed()
+        compose.onNodeWithText("Evening").performTouchInput { longClick() }
+        compose.onNodeWithText("Delete Evening").performClick()
+        compose.onNodeWithText("Delete").performClick()
+        compose.waitUntil(5000) { runBlocking { compose.activity.profiles.layouts.first() }.none { it == "Evening" } }
+        // Built-in layouts are never deletable.
+        assertTrue(runBlocking { compose.activity.profiles.layouts.first() }.containsAll(listOf("Personal", "Work", "Travel")))
+    }
+
+    @Test fun aTileDragsToANewCellAndPinnedTilesStayPut() {
+        seed(listOf(
+            GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1, x = 0),
+            GridItem(2, App("Battery", BuiltInTiles.BATTERY), 1, x = 1)
+        ))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").performClick()
+        compose.onNodeWithContentDescription("Clock").performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(120f, 0f)); moveBy(androidx.compose.ui.geometry.Offset(160f, 0f)); moveBy(androidx.compose.ui.geometry.Offset(120f, 0f)); up()
+        }
+        compose.waitUntil(5000) { runBlocking { compose.activity.appsManager.homeGridFlow.first().first { it.app.name == "Clock" }.x == 1 } }
+        // A pinned tile refuses to move.
+        runBlocking { compose.activity.appsManager.setGrid(listOf(
+            GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1, x = 0, positionPinned = true),
+            GridItem(2, App("Battery", BuiltInTiles.BATTERY), 1, x = 1))) }
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Clock").performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(120f, 0f)); moveBy(androidx.compose.ui.geometry.Offset(160f, 0f)); moveBy(androidx.compose.ui.geometry.Offset(120f, 0f)); up()
+        }
+        compose.waitForIdle()
+        assertEquals(0, runBlocking { compose.activity.appsManager.homeGridFlow.first().first { it.app.name == "Clock" }.x })
+    }
+
+    @Test fun groupHeadersAndTileColoursSurviveARestart() {
+        val settings = TileSettings()
+        runBlocking { compose.activity.settingsRepository.updateSettings(settings.copy(accentColor = 0xFF0078D7)) }
+        seed(listOf(
+            GridItem(1, App("Work", BuiltInTiles.GROUP), 3, 1, groupLabel = "Work"),
+            GridItem(2, App("Clock", BuiltInTiles.CLOCK), 1, x = 0, y = 1),
+            GridItem(3, App("Battery", BuiltInTiles.BATTERY), 1, x = 1, y = 1)
+        ))
+        compose.onNodeWithText("Work").assertIsDisplayed()
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").performClick()
+        compose.onNodeWithContentDescription("Clock").performClick()
+        compose.onNodeWithText("Edit tile").assertIsDisplayed()
+        // Pick a per-tile colour rather than the icon's own edge colour.
+        compose.onNodeWithContentDescription("Tile color B4009E").performClick()
+        compose.waitUntil(5000) { runBlocking { compose.activity.appsManager.homeGridFlow.first().any { it.tileColor != null } } }
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        val restored = runBlocking { compose.activity.appsManager.homeGridFlow.first() }
+        assertTrue(restored.any { it.tileColor != null })
+        assertTrue(restored.any { it.isGroup && it.groupLabel == "Work" })
+    }
+
+    @Test fun quietHoursHideCountsAndTheNowBoard() {
+        seed(listOf(GridItem(1, App("Settings", "com.android.settings"), 2, height = 1)))
+        NotificationTiles.post(TileNotification("quiet", "com.android.settings", "Hidden while quiet", "body", System.currentTimeMillis(), ongoing = true, progressMax = 10, progress = 5))
+        compose.waitForIdle()
+        compose.onNodeWithText("Hidden while quiet").assertIsDisplayed()
+        runBlocking { compose.activity.settingsRepository.updateSettings(TileSettings(meetingMode = true)) }
+        compose.waitForIdle()
+        compose.onNodeWithText("Hidden while quiet").assertDoesNotExist()
+        compose.onNodeWithText("Quiet").assertIsDisplayed()
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Now").assertDoesNotExist()
+        NotificationTiles.replace(emptyList())
+    }
+
+    @Test fun themePacksAndGroupHeaderCreationRoundTripThroughSettings() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        val original = runBlocking { compose.activity.settingsRepository.tileSettingsFlow.first() }
+        val code = tgo1014.gridlauncher.live.ThemePacks.encode(original.copy(accentColor = 0xFFB4009E, glassFinish = "acrylic"))
+        val decoded = tgo1014.gridlauncher.live.ThemePacks.decode(code)!!
+        runBlocking { compose.activity.settingsRepository.updateSettings(decoded) }
+        val applied = runBlocking { compose.activity.settingsRepository.tileSettingsFlow.first() }
+        assertEquals(0xFFB4009EL, applied.accentColor)
+        assertEquals("acrylic", applied.glassFinish)
+        // A bad paste changes nothing.
+        assertNull(tgo1014.gridlauncher.live.ThemePacks.decode("not a pack"))
+    }
+
+    @Test fun askStartAnswersFromLocalDataAndOffersVoice() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Ask").performClick()
+        compose.onNodeWithText("Ask Start").assertIsDisplayed()
+        compose.onNodeWithText("What's on today?").performTextInput("what time is it")
+        compose.waitForIdle()
+        compose.onNodeWithText("Answer").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Ask by voice").assertIsDisplayed()
+    }
 }

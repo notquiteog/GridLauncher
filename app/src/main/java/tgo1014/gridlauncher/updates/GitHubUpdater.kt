@@ -3,7 +3,6 @@ package tgo1014.gridlauncher.updates
 import android.app.Application
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.*
@@ -23,29 +22,26 @@ class GitHubUpdater(application: Application) : AndroidViewModel(application) {
     private val prefs = app.getSharedPreferences("github-updates", 0)
     private val mutable = MutableStateFlow(UpdateState())
     val state = mutable.asStateFlow()
-    val automatic = MutableStateFlow(prefs.getBoolean("automatic", true))
+    private val automaticMutable = MutableStateFlow(prefs.getBoolean("automatic", true))
+    val automatic = automaticMutable.asStateFlow()
     val eligible: Boolean get() = runCatching {
-        val installers = if (Build.VERSION.SDK_INT >= 30) app.packageManager.getInstallSourceInfo(app.packageName).let {
-            listOf(it.installingPackageName, it.initiatingPackageName, if (Build.VERSION.SDK_INT >= 34) it.updateOwnerPackageName else null)
-        } else {
-            @Suppress("DEPRECATION")
-            listOf(app.packageManager.getInstallerPackageName(app.packageName))
-        }
+        val source = app.packageManager.getInstallSourceInfo(app.packageName)
+        val installers = listOf(source.installingPackageName, source.initiatingPackageName, source.updateOwnerPackageName)
         usesGitHubUpdates(BuildConfig.DISTRIBUTION_CHANNEL, installers)
     }.getOrDefault(false)
 
-    fun setAutomatic(value: Boolean) { automatic.value = value; prefs.edit().putBoolean("automatic", value).apply() }
+    fun setAutomatic(value: Boolean) { automaticMutable.value = value; prefs.edit().putBoolean("automatic", value).apply() }
     fun check(manual: Boolean = false) {
         if (!eligible || mutable.value.checking || mutable.value.downloading) return
         val now = System.currentTimeMillis()
-        if (!manual && (BuildConfig.DEBUG || !automatic.value || mutable.value.update != null ||
+        if (!manual && (BuildConfig.DEBUG || !automaticMutable.value || mutable.value.update != null ||
                     now - prefs.getLong("lastSuccess", 0) in 0 until 86_400_000L || now - prefs.getLong("lastAttempt", 0) in 0 until 3_600_000L)) return
         prefs.edit().putLong("lastAttempt", now).apply()
         mutable.value = UpdateState(checking = true)
         viewModelScope.launch {
             try {
                 val update = withContext(Dispatchers.IO) {
-                    parseUpdate(readText(RELEASE_API), ::readText, BuildConfig.VERSION_CODE.toLong(), Build.VERSION.SDK_INT)
+                    parseUpdate(readText(RELEASE_API), ::readText, BuildConfig.VERSION_CODE.toLong(), sdk = 37)
                 }
                 prefs.edit().putLong("lastSuccess", System.currentTimeMillis()).apply()
                 mutable.value = UpdateState(update = update, message = if (manual && update == null) "You have the latest compatible GitHub release." else null)
@@ -97,11 +93,11 @@ class GitHubUpdater(application: Application) : AndroidViewModel(application) {
 
 @Suppress("DEPRECATION")
 internal fun verifyApk(pm: PackageManager, packageName: String, file: File, expectedVersion: Long) {
-    val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+    val flags = PackageManager.GET_SIGNING_CERTIFICATES
     val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: error("Invalid APK")
     val installed = pm.getPackageInfo(packageName, flags)
-    fun version(info: PackageInfo) = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-    fun signers(info: PackageInfo): Set<String> = (if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures)
+    fun version(info: PackageInfo) = info.longVersionCode
+    fun signers(info: PackageInfo): Set<String> = info.signingInfo?.apkContentsSigners.orEmpty()
         .orEmpty().map { it.toCharsString() }.toSet()
     validateApkIdentity(packageName, archive.packageName, version(installed), version(archive), expectedVersion, signers(installed), signers(archive))
 }

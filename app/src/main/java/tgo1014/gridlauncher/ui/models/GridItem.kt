@@ -19,4 +19,12 @@ data class GridItem(
     val destination: String? = null,
     val contact: tgo1014.gridlauncher.live.PinnedContact? = null,
     val contacts: List<tgo1014.gridlauncher.live.PinnedContact> = emptyList(),
-)
+    /** A per-tile colour that beats the icon's own edge colour, as Windows Phone allowed. */
+    val tileColor: Long? = null,
+    /** Nested folders, so a folder can hold another folder. */
+    val childFolders: List<GridItem> = emptyList(),
+    val groupLabel: String = "",
+) {
+    val isGroup get() = app.packageName == tgo1014.gridlauncher.live.BuiltInTiles.GROUP
+    val childCount get() = children.size + childFolders.size
+}

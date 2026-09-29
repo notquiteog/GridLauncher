@@ -8,61 +8,41 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import tgo1014.gridlauncher.data.isSystemDarkTheme
 import tgo1014.gridlauncher.data.reduceBitmapBrightness
 import tgo1014.gridlauncher.data.saveToFile
-import tgo1014.gridlauncher.domain.SettingsRepository
+import tgo1014.gridlauncher.data.toBitmap
 import java.io.File
 import javax.inject.Inject
 
+/**
+ * Stores a chosen wallpaper twice, once as picked and once darkened, and returns the path to use.
+ * Which variant is active is decided later from the launcher's own dark setting, so toggling
+ * Dark background swaps the wallpaper without re-picking it.
+ */
 class StoreWallpaperPickedUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val settingsRepository: SettingsRepository,
 ) {
-    suspend operator fun invoke(uri: Uri) = runCatching {
-        withContext(Dispatchers.IO) {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            val drawable = Drawable.createFromStream(inputStream, uri.toString())
-                ?: return@withContext
+    suspend operator fun invoke(uri: Uri, dark: Boolean): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val drawable = context.contentResolver.openInputStream(uri)?.use { Drawable.createFromStream(it, uri.toString()) }
+                ?: return@runCatching null
             val bitmap = drawableToBitmap(drawable)
-            val file = saveBitmapAndGet(bitmap)
-            val settings = settingsRepository.tileSettingsFlow.first()
-            settingsRepository.updateSettings(
-                settings.copy(wallpaperPath = file.absolutePath)
-            )
-        }
-    }.onFailure(::println)
-
-    private fun saveBitmapAndGet(bitmap: Bitmap): File {
-        bitmap.saveToFile(context.wallpaperFile)
-        bitmap.reduceBitmapBrightness().saveToFile(context.wallpaperDarkFile)
-        return if (context.isSystemDarkTheme) {
-            context.wallpaperDarkFile
-        } else {
-            context.wallpaperFile
-        }
+            bitmap.saveToFile(context.wallpaperFile)
+            bitmap.reduceBitmapBrightness().saveToFile(context.wallpaperDarkFile)
+            (if (dark) context.wallpaperDarkFile else context.wallpaperFile).absolutePath
+        }.getOrNull()
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {
-        var bitmap = if (drawable is BitmapDrawable) {
-            drawable.bitmap
-        } else {
-            val bitmap = Bitmap.createBitmap(
-                drawable.intrinsicWidth,
-                drawable.intrinsicHeight,
-                Bitmap.Config.ARGB_8888
-            )
-            val canvas = Canvas(bitmap)
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            return Bitmap.createBitmap(drawable.bitmap)
+        }
+        val width = drawable.intrinsicWidth.coerceAtLeast(1)
+        val height = drawable.intrinsicHeight.coerceAtLeast(1)
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { canvas ->
             drawable.setBounds(0, 0, canvas.width, canvas.height)
-            drawable.draw(canvas)
-            bitmap
+            drawable.draw(Canvas(canvas))
         }
-        if (context.isSystemDarkTheme) {
-            bitmap = bitmap.reduceBitmapBrightness()
-        }
-        return bitmap
     }
-
 }

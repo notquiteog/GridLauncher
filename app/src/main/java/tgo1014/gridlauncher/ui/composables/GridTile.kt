@@ -20,8 +20,14 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
@@ -44,6 +50,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
@@ -58,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,6 +80,9 @@ import androidx.compose.ui.semantics.customActions
 import kotlinx.coroutines.withContext
 import tgo1014.gridlauncher.domain.models.TileSettings
 import tgo1014.gridlauncher.live.BuiltInTiles
+import tgo1014.gridlauncher.live.MediaTiles
+import tgo1014.gridlauncher.live.NowPlaying
+import tgo1014.gridlauncher.live.PhotoTiles
 import tgo1014.gridlauncher.live.NotificationTiles
 import tgo1014.gridlauncher.ui.MainActivity
 import tgo1014.gridlauncher.ui.models.GridItem
@@ -80,11 +93,16 @@ import tgo1014.gridlauncher.ui.theme.AsyncImage
 fun GridTile(
     item: GridItem, hazeState: HazeState? = null, onFolder: ((GridItem) -> Unit)? = null, modifier: Modifier = Modifier, tileSettings: TileSettings = TileSettings(),
     isEditMode: Boolean = false, onItemDropped: (GridItem, Float, Float) -> Unit = { _, _, _ -> }, onItemClicked: (GridItem) -> Unit = {}, onItemLongClicked: (GridItem) -> Unit = {},
+    isKeyboardFocused: Boolean = false, onFocus: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val glass = LocalGlass.current
-    val tileColor = Color(item.app.icon.edgeColor ?: tileSettings.accentColor).copy(alpha = 1f)
-    val tileInk = if (item.photoUris.isNotEmpty() || tileColor.luminance() <= .179f) Color.White else Color.Black
+    val tileColor = Color(item.tileColor ?: item.app.icon.edgeColor ?: tileSettings.accentColor).copy(alpha = 1f)
+    var recentPhotos by remember { mutableStateOf<List<String>>(emptyList()) }
+    // A Photos hub with no picks borrows the library itself; chosen photos always win.
+    val photoSource = if (item.photoUris.isNotEmpty()) item.photoUris else recentPhotos
+    // Photo content brings its own contrast, so its overlay text is always white.
+    val tileInk = if (photoSource.isNotEmpty()) Color.White else tgo1014.gridlauncher.ui.theme.readableInk(tileColor)
     var showNativeActions by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
     var showPeople by remember { mutableStateOf(false) }
@@ -92,7 +110,7 @@ fun GridTile(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val haptic = LocalHapticFeedback.current
     val notifications by NotificationTiles.notifications.collectAsStateWithLifecycle()
-    val matching = if (tileSettings.liveTilesEnabled) notifications.filter { n ->
+    val matching = if (tileSettings.liveTilesEnabled && !glass.quiet) notifications.filter { n ->
         n.packageName == item.app.packageName || item.children.any { it.packageName == n.packageName } || people.any { it.matches(n) }
     } else emptyList()
     var detail by remember(item.app.packageName) { mutableStateOf<Pair<String, String>?>(null) }
@@ -101,34 +119,88 @@ fun GridTile(
     var permissionRevision by remember { mutableIntStateOf(0) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionRevision++ }
     var showFolder by remember { mutableStateOf(false) }
+    var showHub by remember { mutableStateOf(false) }
     val builtIn = item.app.packageName.startsWith("grid://")
+    val hub = if (item.app.packageName == BuiltInTiles.PEOPLE) showHub else showPeople
+    val nowPlaying by MediaTiles.now.collectAsStateWithLifecycle()
+    val isHub = BuiltInTiles.isHub(item.app.packageName)
     LaunchedEffect(item.app.packageName, tileSettings.liveTilesEnabled, tileSettings.isTileFlipEnabled, glass.motion, permissionRevision) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Stagger by tile so a full screen of tiles does not all refresh in the same frame.
+            val offset = (item.id * 977L) % 8_000L
+            var elapsed = 0L
             while (true) {
                 if (item.app.packageName == BuiltInTiles.PEOPLE) people = withContext(Dispatchers.IO) { ContactTiles.favorites(context) }
-                detail = if (tileSettings.liveTilesEnabled) withContext(Dispatchers.IO) { BuiltInTiles.detail(context, item.app.packageName) } else null
+                if (item.app.packageName == BuiltInTiles.PHOTOS && item.photoUris.isEmpty()) {
+                    recentPhotos = withContext(Dispatchers.IO) { PhotoTiles.recent(context).map { it.uri } }
+                }
+                if (item.app.packageName == BuiltInTiles.MUSIC) withContext(Dispatchers.IO) { MediaTiles.refresh(context) }
+                // Only the hubs do provider work; a plain app tile reads its notifications instead.
+                detail = if (tileSettings.liveTilesEnabled && isHub) withContext(Dispatchers.IO) { BuiltInTiles.detail(context, item.app.packageName) } else null
                 if (tileSettings.isTileFlipEnabled && glass.motion) page++
-                delay(8_000)
+                elapsed += 8_000
+                delay(maxOf(1_000, 8_000 - (offset - elapsed % 8_000) % 8_000))
             }
         }
     }
     fun open() {
         when {
-            item.children.isNotEmpty() -> if (onFolder != null) onFolder(item) else { showFolder = true }
-            people.isNotEmpty() -> showPeople = true
+            item.childCount > 0 -> if (onFolder != null) onFolder(item) else { showFolder = true }
             item.app.packageName == BuiltInTiles.CALENDAR && !BuiltInTiles.granted(context, Manifest.permission.READ_CALENDAR) -> permission.launch(Manifest.permission.READ_CALENDAR)
             item.app.packageName == BuiltInTiles.PEOPLE && !BuiltInTiles.granted(context, Manifest.permission.READ_CONTACTS) -> permission.launch(Manifest.permission.READ_CONTACTS)
+            item.app.packageName == BuiltInTiles.PHOTOS && item.photoUris.isEmpty() && !PhotoTiles.permission(context) -> permission.launch(PhotoTiles.permissionName())
+            people.isNotEmpty() -> if (item.app.packageName == BuiltInTiles.PEOPLE) showHub = true else showPeople = true
             item.photoUris.isNotEmpty() -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(item.photoUris[page.mod(item.photoUris.size)]), "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
+            photoSource.isNotEmpty() -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(photoSource[page.mod(photoSource.size)]), "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }
             else -> onItemClicked(item)
         }
     }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(if (pressed && glass.motion) .965f else 1f, if (glass.motion) spring(dampingRatio = .75f, stiffness = 650f) else snap(), label = "Tile press")
-    BoxWithConstraints(modifier = modifier.graphicsLayer { scaleX = pressScale; scaleY = pressScale }.clip(RectangleShape).background(tileColor)
+    val drag = remember(item.id) { mutableStateOf(Offset.Zero) }
+    val lifted = drag.value != Offset.Zero
+    BoxWithConstraints(modifier = modifier.zIndex(if (lifted) 1f else 0f)
+        .graphicsLayer {
+            scaleX = pressScale * if (lifted) 1.03f else 1f; scaleY = pressScale * if (lifted) 1.03f else 1f
+            translationX = drag.value.x; translationY = drag.value.y
+            shape = RectangleShape; shadowElevation = if (lifted) 26.dp.toPx() else 0f
+        }.clip(RectangleShape).background(tileColor)
+        .pointerInput(isEditMode, item.id) {
+            if (!isEditMode) return@pointerInput
+            // Watches the Initial pass so the drag wins over the tile's own click handling.
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val slop = viewConfiguration.touchSlop
+                var total = Offset.Zero
+                var dragging = false
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    // Handle the lift first: that is where the drop is committed.
+                    if (change.changedToUp()) {
+                        if (dragging && (total.x != 0f || total.y != 0f)) onItemDropped(item, total.x, total.y)
+                        drag.value = Offset.Zero
+                        break
+                    }
+                    val delta = change.positionChange()
+                    if (!dragging && total.getDistance() + delta.getDistance() > slop) {
+                        dragging = true
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    if (dragging) { total += delta; drag.value = total }
+                }
+            }
+        }
+        .onFocusChanged { if (it.isFocused) onFocus() }
         .semantics { contentDescription = item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = listOf(CustomAccessibilityAction(if (isEditMode) "Edit tile" else "App shortcuts") { if (isEditMode) onItemLongClicked(item) else showNativeActions = true; true }, CustomAccessibilityAction("Preview notifications") { showPreview = true; true }) }
+        .focusable()
         .combinedClickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = { if (isEditMode) onItemClicked(item) else open() }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); if (isEditMode) onItemLongClicked(item) else showNativeActions = true })) {
-        if (item.widgetId >= 0) {
+        if (item.isGroup) {
+            Text(item.groupLabel.ifBlank { item.app.name }, color = tileInk, fontSize = 13.sp,
+                fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 14.dp))
+        } else if (item.widgetId >= 0) {
             val activity = LocalActivity.current as? MainActivity
             val manager = AppWidgetManager.getInstance(context)
             val info = remember(item.widgetId) { manager.getAppWidgetInfo(item.widgetId) }
@@ -141,35 +213,52 @@ fun GridTile(
                 TextButton(onClick = { if (isEditMode) onItemLongClicked(item) else showNativeActions = true }, modifier = Modifier.align(Alignment.TopEnd)) { Text("Actions", color = tileInk) }
             } else Text("Widget unavailable\nRemove in Edit layout", color = tileInk, modifier = Modifier.padding(12.dp))
         } else {
-            if (item.photoUris.isNotEmpty()) {
-                Crossfade(targetState = if (tileSettings.liveTilesEnabled) page.mod(item.photoUris.size) else 0, label = "Photo tile") { index ->
-                    AsyncImage(item.photoUris[index], Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (photoSource.isNotEmpty()) {
+                Crossfade(targetState = if (tileSettings.liveTilesEnabled) page.mod(photoSource.size) else 0, label = "Photo tile") { index ->
+                    AsyncImage(photoSource[index], Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .18f)))
             }
             val expanded = maxWidth >= 86.dp && maxHeight >= 86.dp
+            val isMusic = item.app.packageName == BuiltInTiles.MUSIC
             val preview = matching.getOrNull(page.mod(matching.size.coerceAtLeast(1)))
-            val live = if (!locked && tileSettings.showNotificationText && preview?.packageName !in tileSettings.hiddenPreviewApps && preview?.title?.isNotBlank() == true)
-                preview.title to preview.text else detail
-            if (expanded && live != null && people.isEmpty() && item.children.isEmpty()) {
+            val previewed = preview?.takeIf { tileSettings.showNotificationText && !glass.quiet }
+            if (isMusic && expanded) {
+                NowPlayingTile(nowPlaying, Modifier.fillMaxSize().padding(10.dp), ink = tileInk,
+                    onToggle = { MediaTiles.togglePlayPause() }, onNext = { MediaTiles.next() }, onPrevious = { MediaTiles.previous() })
+            } else {
+            val live = if (!locked && previewed?.packageName !in tileSettings.hiddenPreviewApps && previewed?.title?.isNotBlank() == true)
+                previewed.title to previewed.text else detail
+            if (expanded && live != null && people.isEmpty() && item.childCount == 0) {
                 TileTurn(key = live, modifier = Modifier.fillMaxSize().padding(12.dp).padding(bottom = if (preview?.actions?.isNotEmpty() == true && item.width >= 2) 60.dp else 24.dp)) {
                     val content = live
                     Column(verticalArrangement = Arrangement.Center, modifier = Modifier.fillMaxSize()) {
                         Text(content.first, color = tileInk, fontSize = if (item.app.packageName == BuiltInTiles.CLOCK || item.app.packageName == BuiltInTiles.BATTERY) 32.sp else 20.sp,
                             fontWeight = FontWeight.Light, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(content.second, color = tileInk, fontSize = 13.sp, maxLines = if (item.width >= 2) 3 else 2, overflow = TextOverflow.Ellipsis)
-                        if (preview != null && live == (preview.title to preview.text)) {
-                            if (preview.semantic > 0) Text(semanticLabel(preview.semantic), color = tileInk, fontSize = 11.sp)
-                            LiveProgress(preview, Modifier.padding(top = 5.dp), ink = tileInk)
+                        if (previewed != null && live == (previewed.title to previewed.text)) {
+                            if (previewed.semantic > 0) Text(semanticLabel(previewed.semantic), color = tileInk, fontSize = 11.sp)
+                            LiveProgress(previewed, Modifier.padding(top = 5.dp), ink = tileInk)
+                        }
+                    }
+                }
+                // Android 17 stacks what else is waiting rather than hiding it behind a count.
+                if (tileSettings.stackNotifications && expanded && item.width >= 2 && matching.size > 1 && !item.isGroup) {
+                    val rest = matching.filter { it.key != preview?.key }.take(2)
+                    Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = if (tileSettings.isAppLabelsHidden) 6.dp else 20.dp)) {
+                        rest.forEach { other ->
+                            Text("· ${other.title.ifBlank { other.packageName }}", color = tileInk.copy(alpha = .78f),
+                                fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
             } else if (people.isNotEmpty()) {
                 PeopleMosaic(people, page, Modifier.fillMaxSize().padding(bottom = 24.dp), ink = tileInk)
-            } else if (item.children.isNotEmpty()) {
+            } else if (item.childCount > 0) {
                 val folderIconSize = (minOf(maxWidth, maxHeight) * .31f).coerceAtMost(64.dp)
                 Column(Modifier.align(Alignment.Center).padding(14.dp)) {
-                    item.children.take(4).chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (item.children.take(4) + item.childFolders.take(4 - item.children.size).map { it.app }).chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { app -> Box {
                             AsyncImage(app.icon.iconFile, Modifier.size(folderIconSize))
                             val count = matching.count { it.packageName == app.packageName }
@@ -177,30 +266,46 @@ fun GridTile(
                         } }
                     } }
                 }
-            } else if (item.photoUris.isEmpty()) {
-                if (builtIn) Text(when (item.app.packageName) { BuiltInTiles.CLOCK -> "◷"; BuiltInTiles.CALENDAR -> java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH).toString(); BuiltInTiles.PEOPLE -> "● ●"; BuiltInTiles.BATTERY -> "▰"; else -> "▦" },
-                    color = tileInk, fontSize = if (expanded) 38.sp else 22.sp, modifier = Modifier.align(Alignment.Center))
+            } else if (photoSource.isEmpty()) {
+                if (builtIn) Text(when (item.app.packageName) {
+                    BuiltInTiles.CLOCK -> "◷"
+                    BuiltInTiles.CALENDAR -> java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH).toString()
+                    BuiltInTiles.PEOPLE -> "● ●"
+                    BuiltInTiles.BATTERY -> "▰"
+                    BuiltInTiles.MUSIC -> "▶"
+                    BuiltInTiles.STORAGE -> "▤"
+                    else -> "▦"
+                }, color = tileInk, fontSize = if (expanded) 38.sp else 22.sp, modifier = Modifier.align(Alignment.Center))
                 else {
                     val iconSize = minOf(maxWidth * .72f, maxHeight - if (tileSettings.isAppLabelsHidden) 12.dp else 32.dp).coerceAtLeast(24.dp)
                     AsyncImage(item.app.icon.iconFile, Modifier.align(Alignment.Center).offset(y = if (tileSettings.isAppLabelsHidden) 0.dp else (-8).dp).size(iconSize))
                 }
             }
-            if (expanded && !locked && tileSettings.showNotificationText && preview != null && preview.packageName !in tileSettings.hiddenPreviewApps && maxWidth >= 180.dp && preview.actions.isNotEmpty()) {
-                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(preview, compact = true, ink = tileInk) }
             }
-            if (!tileSettings.isAppLabelsHidden) Text(item.app.name, color = tileInk, fontSize = if (expanded) 13.sp else 11.sp, maxLines = 1,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (expanded) 10.dp else 3.dp).padding(end = if (matching.isNotEmpty()) 26.dp else 0.dp))
-            if (matching.isNotEmpty()) Text(if (matching.size > 99) "99+" else matching.size.toString(), color = tileInk, fontSize = if (expanded) 24.sp else 16.sp,
-                modifier = Modifier.align(Alignment.BottomEnd).sizeIn(minWidth = 44.dp, minHeight = 44.dp).clickable { showPreview = true }.padding(6.dp))
+            if (expanded && !locked && previewed != null && previewed.packageName !in tileSettings.hiddenPreviewApps && maxWidth >= 180.dp && previewed.actions.isNotEmpty() && !isMusic) {
+                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(previewed, compact = true, ink = tileInk) }
+            }
+            if (!tileSettings.isAppLabelsHidden && !isMusic && !item.isGroup) Text(item.app.name, color = tileInk, fontSize = if (expanded) 13.sp else 11.sp, maxLines = 2,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (expanded) 10.dp else 3.dp).padding(end = if (matching.isNotEmpty() && tileSettings.showTileCounts) 26.dp else 0.dp))
+            if (matching.isNotEmpty() && tileSettings.showTileCounts && !item.isGroup) Text(if (matching.size > 99) "99+" else matching.size.toString(), color = tileInk, fontSize = if (expanded) 24.sp else 16.sp,
+                modifier = Modifier.align(Alignment.BottomEnd).sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .semantics { contentDescription = "${matching.size} notifications. Double tap to preview" }
+                    .clickable { showPreview = true }.padding(6.dp))
+        }
+        if (isKeyboardFocused) {
+            Box(Modifier.fillMaxSize().border(3.dp, Color.White))
+            Box(Modifier.fillMaxSize().border(1.dp, glass.accent))
         }
         if (isEditMode) {
-            Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = .12f)).clickable { onItemClicked(item) })
+            // Visual only: the tile's own click already opens the edit sheet in edit mode.
+            Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = .12f)))
             if (item.positionPinned) Text("Pinned", color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = .6f)).padding(3.dp))
         }
         NativeTileActions(item, showNativeActions, { showNativeActions = false }, { open() })
     }
     if (showPreview) NotificationPreview(item.app.name, (item.children.map { it.packageName } + item.app.packageName + matching.map { it.packageName }).toSet(), { showPreview = false })
     if (showPeople) PeoplePreview(people, { showPeople = false })
+    if (showHub) PeopleHub(people, { showHub = false })
     if (showFolder) AlertDialog(onDismissRequest = { showFolder = false }, title = { Text(item.app.name) },
         text = { LazyColumn { items(item.children) { app -> TextButton(onClick = {
             showFolder = false
@@ -208,4 +313,37 @@ fun GridTile(
             if (intent != null) runCatching { context.startActivity(intent) }
         }) { AsyncImage(app.icon.iconFile, Modifier.size(36.dp)); Spacer(Modifier.width(12.dp)); Text(app.name) } } } },
         confirmButton = { TextButton(onClick = { showFolder = false }) { Text("Close") } })
+}
+
+/** Artwork, title and transport for the system's current media session. */
+@Composable
+private fun NowPlayingTile(now: NowPlaying?, modifier: Modifier, ink: Color, onToggle: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit) {
+    val playing = now?.playing == true
+    BoxWithConstraints(modifier) {
+        if (now?.artwork != null) {
+            Crossfade(targetState = now.packageName, label = "Album art") {
+                Image(bitmap = now.artwork!!.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .38f)))
+        }
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(top = if (now?.artwork != null) 28.dp else 0.dp)) {
+            TileTurn(key = now?.label) {
+                Text(now?.title?.takeIf { it.isNotBlank() } ?: "Nothing playing", color = ink, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (!now?.artist.isNullOrBlank()) Text(now.artist, color = ink.copy(alpha = .8f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (now?.canGoPrevious == true) TileGlyph("⏮", ink, "Previous track") { onPrevious() }
+                TileGlyph(if (playing) "⏸" else "▶", ink, if (playing) "Pause" else "Play", prominent = true) { onToggle() }
+                if (now?.hasNext == true) TileGlyph("⏭", ink, "Next track") { onNext() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TileGlyph(glyph: String, ink: Color, description: String, prominent: Boolean = false, onClick: () -> Unit) {
+    Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clickable(onClick = onClick)
+        .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
+        Text(glyph, color = ink, fontSize = if (prominent) 22.sp else 15.sp, maxLines = 1)
+    }
 }

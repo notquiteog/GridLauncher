@@ -18,7 +18,6 @@ import tgo1014.gridlauncher.domain.SettingsRepository
 import tgo1014.gridlauncher.domain.models.App
 import tgo1014.gridlauncher.domain.usecases.AddToGridUseCase
 import tgo1014.gridlauncher.domain.usecases.GetAppListUseCase
-import tgo1014.gridlauncher.domain.usecases.ItemGridSizeChangeUseCase
 import tgo1014.gridlauncher.domain.usecases.MoveGridItemUseCase
 import tgo1014.gridlauncher.domain.usecases.RemoveFromGridUseCase
 import tgo1014.gridlauncher.domain.usecases.wallpaper.OnSystemThemeChangedUseCase
@@ -29,7 +28,9 @@ import tgo1014.gridlauncher.ui.models.GridItem
 import tgo1014.gridlauncher.ui.models.SettingsEvent
 import tgo1014.gridlauncher.ui.models.TileEvent
 import javax.inject.Inject
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 @HiltViewModel
 class HomeScreenViewModel @Inject constructor(
@@ -39,20 +40,34 @@ class HomeScreenViewModel @Inject constructor(
     private val addToGridUseCase: AddToGridUseCase,
     private val moveGridItemUseCase: MoveGridItemUseCase,
     private val removeFromGridUseCase: RemoveFromGridUseCase,
-    private val itemGridSizeChangeUseCase: ItemGridSizeChangeUseCase,
     private val appsManager: AppsManager,
     private val settingsRepository: SettingsRepository,
     private val storeWallpaperPickedUseCase: StoreWallpaperPickedUseCase,
     private val onRemoveWallpaperUseCase: RemoveWallpaperUseCase,
     private val onSystemThemeChangedUseCase: OnSystemThemeChangedUseCase,
     private val updateWallpaperBasedOnThemeUseCase: UpdateWallpaperBasedOnThemeUseCase,
+    private val usage: tgo1014.gridlauncher.data.UsageTracker,
 ) : ViewModel() {
 
     private var fullAppList: List<App> = emptyList()
 
+    val frequentApps = usage.frequent
+
+    /** Opens Ask Start from the hotseat search pill. */
+    fun onSearch() = openAsk()
+
+    private fun openAsk() { _stateFlow.update { it.copy(isAskShowing = true) } }
+    fun onAskHandled() { _stateFlow.update { it.copy(isAskShowing = false) } }
+
+    fun pinToHotseat(packageName: String) = viewModelScope.launch {
+        val settings = settingsRepository.tileSettingsFlow.first()
+        if (settings.hotseat.contains(packageName)) return@launch
+        settingsRepository.updateSettings(settings.copy(hotseat = (settings.hotseat + packageName).take(4)))
+    }
+
     private val _stateFlow = MutableStateFlow(HomeState())
-    val stateFlow = combine(_stateFlow, settingsRepository.tileSettingsFlow, profiles.active) { state, settings, profile ->
-        state.copy(tileSettings = settings, profile = profile)
+    val stateFlow = combine(_stateFlow, settingsRepository.tileSettingsFlow, profiles.active, profiles.layouts) { state, settings, profile, layouts ->
+        state.copy(tileSettings = settings, profile = profile, layouts = layouts)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 
     init {
@@ -60,7 +75,10 @@ class HomeScreenViewModel @Inject constructor(
         viewModelScope.launch {
             while (true) {
                 val settings = settingsRepository.tileSettingsFlow.first()
-                if (settings.workSchedule) profiles.select(tgo1014.gridlauncher.data.scheduledProfile(java.time.LocalDateTime.now(), settings.workStartHour, settings.workEndHour))
+                if (settings.workSchedule) {
+                    val due = tgo1014.gridlauncher.data.scheduledProfile(java.time.LocalDateTime.now(), settings.workStartHour, settings.workEndHour)
+                    if (due != profiles.active.first()) profiles.select(due)
+                }
                 delay(60_000)
             }
         }
@@ -72,7 +90,32 @@ class HomeScreenViewModel @Inject constructor(
         profiles.select(name)
         resetState()
     }
-    fun copyProfile(name: String) = viewModelScope.launch { profiles.duplicateInto(name) }
+    fun copyProfile(name: String) = viewModelScope.launch { runCatching { profiles.duplicateInto(name) }.onFailure(::toast) }
+
+    fun createLayout(name: String, copyCurrent: Boolean) = viewModelScope.launch {
+        if (runCatching { profiles.create(name, copyCurrent) }.onFailure(::toast).isFailure) return@launch
+        _stateFlow.update { it.copy(goToHome = true) }
+        resetState()
+    }
+    fun renameLayout(current: String, name: String) = viewModelScope.launch {
+        if (runCatching { profiles.rename(current, name) }.onFailure(::toast).isFailure) return@launch
+        resetState()
+    }
+    fun onHandoffFocusHandled() { _stateFlow.update { it.copy(handoffFocus = null) } }
+
+    fun deleteLayout(name: String) = viewModelScope.launch {
+        if (runCatching { profiles.delete(name) }.onFailure(::toast).isFailure) return@launch
+        resetState()
+    }
+    private fun toast(cause: Throwable) = android.widget.Toast.makeText(context, cause.message ?: "Cannot change layouts", android.widget.Toast.LENGTH_LONG).show()
+
+    /** A handed-off layout name is only honoured when this device still has it. */
+    fun adoptHandoffLayout(name: String, focus: Int? = null) = viewModelScope.launch {
+        if (!profiles.exists(name)) { toast(IllegalArgumentException("That layout is not on this device")); return@launch }
+        profiles.select(name)
+        _stateFlow.update { it.copy(handoffFocus = focus) }
+        resetState()
+    }
 
     fun setEditingLayout(editing: Boolean) { _stateFlow.update { it.copy(isEditingLayout = editing, itemBeingEdited = null) } }
 
@@ -82,9 +125,10 @@ class HomeScreenViewModel @Inject constructor(
     }
 
     fun onOpenApp(app: App) {
+        viewModelScope.launch { usage.record(app.packageName) }
         viewModelScope.launch {
             delay(200)
-            _stateFlow.update { it.copy(goToHome = true, closeSearchFab = true) }
+            _stateFlow.update { it.copy(goToHome = true) }
             resetState()
         }
         viewModelScope.launch { appsManager.openApp(app) }
@@ -93,6 +137,13 @@ class HomeScreenViewModel @Inject constructor(
     fun onGridItemClicked(gridItem: GridItem) = viewModelScope.launch {
         if (_stateFlow.value.isEditingLayout) _stateFlow.update { it.copy(itemBeingEdited = gridItem) }
         else if (!tgo1014.gridlauncher.live.openDestination(context, gridItem)) onOpenApp(gridItem.app)
+    }
+
+    fun toggleHotseat(packageName: String) = viewModelScope.launch {
+        val settings = settingsRepository.tileSettingsFlow.first()
+        val next = if (packageName in settings.hotseat) settings.hotseat - packageName
+        else (settings.hotseat + packageName).take(4)
+        settingsRepository.updateSettings(settings.copy(hotseat = next))
     }
 
     fun onTileDropped(item: GridItem, dx: Int, dy: Int) = viewModelScope.launch {
@@ -141,10 +192,6 @@ class HomeScreenViewModel @Inject constructor(
         _stateFlow.update { it.copy(filterString = "", appList = fullAppList) }
     }
 
-    fun onFabClosed() {
-        _stateFlow.update { it.copy(closeSearchFab = false) }
-    }
-
     fun onSettingsEvent(event: SettingsEvent) = viewModelScope.launch {
         when (event) {
             SettingsEvent.OnSettingsIconClicked -> _stateFlow.update {
@@ -160,7 +207,8 @@ class HomeScreenViewModel @Inject constructor(
             }
 
             is SettingsEvent.OnSettingsUpdated -> runCatching { settingsRepository.updateSettings(event.tileSettings) }.onFailure { android.widget.Toast.makeText(context, it.message ?: "Cannot update layout", android.widget.Toast.LENGTH_LONG).show() }.let { }
-            is SettingsEvent.OnWallpaperPicked -> storeWallpaperPickedUseCase(event.uri)
+            is SettingsEvent.OnWallpaperPicked -> storeWallpaperPickedUseCase(event.uri, settingsRepository.tileSettingsFlow.first().darkTheme)
+                ?.let { settingsRepository.updateSettings(settingsRepository.tileSettingsFlow.first().copy(wallpaperPath = it)) }
             SettingsEvent.OnWallpaperRemoved -> onRemoveWallpaperUseCase()
         }
     }
@@ -172,12 +220,15 @@ class HomeScreenViewModel @Inject constructor(
                 val grid = appsManager.homeGridFlow.first()
                 appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, item.copy(width = event.width, height = event.height), settingsRepository.tileSettingsFlow.first().gridColumns))
             }
+            is TileEvent.OnTileColorChanged -> {
+                val grid = appsManager.homeGridFlow.first()
+                appsManager.setGrid(grid.map { if (it.id == item.id) it.copy(tileColor = event.color) else it })
+            }
             TileEvent.OnTogglePositionPin -> {
                 val grid = appsManager.homeGridFlow.first()
                 appsManager.setGrid(grid.map { if (it.id == item.id) it.copy(positionPinned = !it.positionPinned) else it })
             }
             is TileEvent.OnTileMoved -> moveGridItemUseCase(item.id, event.direction, settingsRepository.tileSettingsFlow.first().gridColumns)
-            is TileEvent.OnSizeChange -> itemGridSizeChangeUseCase(item.id, event.tileSize, settingsRepository.tileSettingsFlow.first().gridColumns)
             TileEvent.OnTileSettingsSheetDismissed -> _stateFlow.update { it.copy(itemBeingEdited = null) }
             TileEvent.OnRemoveClicked -> removeFromGridUseCase(item, settingsRepository.tileSettingsFlow.first().gridColumns).onSuccess {
                 if (item.widgetId >= 0 && !profiles.widgetInUse(item.widgetId)) android.appwidget.AppWidgetHost(context, 1701).deleteAppWidgetId(item.widgetId)
@@ -201,6 +252,12 @@ class HomeScreenViewModel @Inject constructor(
 
     private fun observeSystemTheme() {
         onSystemThemeChangedUseCase()
+            .onEach { updateWallpaperBasedOnThemeUseCase() }
+            .launchIn(viewModelScope)
+        // Toggling Dark background must swap the wallpaper too, not just the colours.
+        settingsRepository.tileSettingsFlow
+            .map { it.darkTheme to it.wallpaperPath }
+            .distinctUntilChanged()
             .onEach { updateWallpaperBasedOnThemeUseCase() }
             .launchIn(viewModelScope)
     }

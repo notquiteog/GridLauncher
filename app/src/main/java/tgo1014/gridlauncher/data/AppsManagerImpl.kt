@@ -4,11 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.content.pm.PackageManager.GET_META_DATA
 import android.content.pm.PackageManager.MATCH_ALL
 import android.content.pm.ResolveInfo
 import android.net.Uri
-import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -60,14 +58,7 @@ class AppsManagerImpl @Inject constructor(
 
     private suspend fun fetchAllApps(): List<App> {
         val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
-        val resolveInfoList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.queryIntentActivities(
-                intent,
-                PackageManager.ResolveInfoFlags.of(MATCH_ALL.toLong())
-            )
-        } else {
-            packageManager.queryIntentActivities(intent, GET_META_DATA)
-        }
+        val resolveInfoList = packageManager.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(MATCH_ALL.toLong()))
         return resolveInfoList
             .distinctBy { it.packageName }
             .filterNot { it.packageName == context.packageName }
@@ -83,14 +74,7 @@ class AppsManagerImpl @Inject constructor(
 
     private val ResolveInfo.packageName get() = activityInfo.packageName
     private val ResolveInfo.applicationInfo
-        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.getApplicationInfo(
-                packageName,
-                PackageManager.ApplicationInfoFlags.of(0)
-            )
-        } else {
-            packageManager.getApplicationInfo(packageName, GET_META_DATA)
-        }
+        get() = packageManager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
     private val ResolveInfo.appName: String
         get() = packageManager.getApplicationLabel(applicationInfo).toString()
 

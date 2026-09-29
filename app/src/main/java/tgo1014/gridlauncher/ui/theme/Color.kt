@@ -1,11 +1,13 @@
 package tgo1014.gridlauncher.ui.theme
 
-import androidx.compose.ui.graphics.Color
-
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
-
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
+/** Spoken names for the accent swatches, so a screen reader does not read raw hex. */
+fun accentName(color: Long): String = when (color) {
+    0xFF0078D7 -> "Blue"
+    0xFF008A00 -> "Green"
+    0xFFB4009E -> "Magenta"
+    0xFFD24726 -> "Orange"
+    0xFF643EBF -> "Violet"
+    0xFF006D77 -> "Teal"
+    0xFF1C1C1C -> "Black"
+    else -> "Accent"
+}

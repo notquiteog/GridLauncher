@@ -1,4 +1,9 @@
 <resources>
     <string name="app_name">GridLauncher</string>
     <string name="search">Search</string>
+    <string name="widget_live_tile_description">Your notifications as a live tile, on any home screen.</string>
+    <string name="widget_live_tile_label">GridLauncher live tile</string>
+    <string name="widget_live_tile_empty">Quiet</string>
+    <string name="widget_live_tile_nothing">No notifications</string>
+    <string name="live_tile_service">GridLauncher live tiles</string>
 </resources>

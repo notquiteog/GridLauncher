@@ -48,7 +48,7 @@ object NotificationTiles {
                 val inputs = action.remoteInputs?.filter { it.allowFreeFormInput }.orEmpty()
                 require(inputs.isNotEmpty())
                 RemoteInput.addResultsToIntent(inputs.toTypedArray(), intent, Bundle().apply { inputs.forEach { putCharSequence(it.resultKey, reply) } })
-                if (Build.VERSION.SDK_INT >= 28) RemoteInput.setResultsSource(intent, RemoteInput.SOURCE_FREE_FORM_INPUT)
+                RemoteInput.setResultsSource(intent, RemoteInput.SOURCE_FREE_FORM_INPUT)
             } else require(action.remoteInputs?.none { it.allowFreeFormInput } != false)
             action.actionIntent.send(context, 0, intent)
         }.isSuccess
@@ -61,9 +61,9 @@ object NotificationTiles {
 }
 
 class LiveNotificationService : NotificationListenerService() {
-    override fun onListenerConnected() { NotificationTiles.replace(runCatching { activeNotifications.mapNotNull { it.toTile() } }.getOrDefault(emptyList())) }
-    override fun onNotificationPosted(sbn: StatusBarNotification) { val tile = sbn.toTile(); if (tile == null) NotificationTiles.remove(sbn.key) else NotificationTiles.post(tile) }
-    override fun onNotificationRemoved(sbn: StatusBarNotification) { NotificationTiles.remove(sbn.key) }
+    override fun onListenerConnected() { NotificationTiles.replace(runCatching { activeNotifications.mapNotNull { it.toTile() } }.getOrDefault(emptyList())); LiveTileWidget.refresh(this) }
+    override fun onNotificationPosted(sbn: StatusBarNotification) { val tile = sbn.toTile(); if (tile == null) NotificationTiles.remove(sbn.key) else NotificationTiles.post(tile); LiveTileWidget.refresh(this) }
+    override fun onNotificationRemoved(sbn: StatusBarNotification) { NotificationTiles.remove(sbn.key); LiveTileWidget.refresh(this) }
     override fun onListenerDisconnected() { NotificationTiles.replace(emptyList()) }
     override fun onDestroy() { NotificationTiles.replace(emptyList()); super.onDestroy() }
 }
@@ -94,7 +94,6 @@ internal fun notificationTile(key: String, packageName: String, original: Notifi
 }
 
 internal fun semanticStyle(vararg texts: CharSequence?): Int {
-    if (Build.VERSION.SDK_INT < 37) return 0
     val styles = (1..4).associateWith { Notification.createSemanticStyleAnnotation(it) }
     return texts.filterIsInstance<Spanned>().flatMap { it.getSpans(0, it.length, Annotation::class.java).toList() }
         .mapNotNull { annotation -> styles.entries.firstOrNull { it.value.key == annotation.key && it.value.value == annotation.value }?.key }.maxOrNull() ?: 0

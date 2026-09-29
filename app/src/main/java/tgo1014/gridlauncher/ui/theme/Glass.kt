@@ -25,10 +25,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.chrisbanes.haze.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import tgo1014.gridlauncher.domain.models.TileSettings
 
-data class GlassEnvironment(val settings: TileSettings = TileSettings(), val accent: Color = Color(0xFF86BCFF), val lowPower: Boolean = false, val locked: Boolean = true) {
+data class GlassEnvironment(val settings: TileSettings = TileSettings(), val accent: Color = Color(0xFF86BCFF), val lowPower: Boolean = false, val locked: Boolean = true, val quiet: Boolean = false) {
     val motion get() = !lowPower && !settings.reduceMotion && android.animation.ValueAnimator.areAnimatorsEnabled()
     val ink get() = if (settings.darkTheme) Color.White else Color(0xFF142C42)
     val solid get() = settings.glassFinish == "solid" || lowPower
@@ -60,7 +61,16 @@ fun rememberGlass(settings: TileSettings): GlassEnvironment {
             }.getOrNull()
         }
     }
-    return GlassEnvironment(settings, tint ?: Color(settings.accentColor), power, locked)
+    // Re-evaluated each minute so a quiet-hours boundary takes effect without a restart.
+    val quiet by produceState(tgo1014.gridlauncher.live.QuietHours.active(settings), settings.meetingMode, settings.quietHoursEnabled, settings.quietStartHour, settings.quietEndHour) {
+        while (true) {
+            value = tgo1014.gridlauncher.live.QuietHours.active(settings)
+            // Keep Android's own Do Not Disturb in step, not just the settings sheet.
+            tgo1014.gridlauncher.live.QuietHours.apply(context, settings)
+            delay(30_000)
+        }
+    }
+    return GlassEnvironment(settings, tint ?: Color(settings.accentColor), power, locked, quiet)
 }
 
 @Composable
@@ -79,12 +89,18 @@ fun Modifier.glassSurface(haze: HazeState? = null): Modifier {
     val glass = LocalGlass.current
     val shape = RoundedCornerShape(0.dp)
     val base = if (glass.settings.darkTheme) Color(0xFF1C344C) else Color(0xFFE9F2FA)
+    val finish = glass.settings.glassFinish
+    // Acrylic is the sharpest, most transparent material: heavy blur, no grain, a specular sheen.
+    val blur = when (finish) { "clear" -> 12.dp; "acrylic" -> 52.dp; else -> 28.dp }
+    val tint = when (finish) { "clear" -> .45f; "acrylic" -> .26f; else -> .72f }
+    val acrylic = finish == "acrylic" && !glass.solid
     var result = clip(shape)
     if (!glass.solid && haze != null) result = result.hazeChild(haze, style = HazeStyle(backgroundColor = base,
-        tint = HazeTint.Color(base.copy(alpha = if (glass.settings.glassFinish == "clear") .45f else .72f)), blurRadius = if (glass.settings.glassFinish == "clear") 12.dp else 28.dp, noiseFactor = .015f))
-    result = result.background(if (glass.solid) base else base.copy(alpha = if (haze == null) .84f else .18f))
+        tint = HazeTint.Color(base.copy(alpha = tint)), blurRadius = blur, noiseFactor = if (acrylic) 0f else .015f))
+    result = result.background(if (glass.solid) base else base.copy(alpha = if (haze == null) .84f else .14f))
         .background(Brush.linearGradient(listOf(glass.accent.copy(alpha = .18f), Color.Transparent, glass.accent.copy(alpha = .07f))))
-        .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = if (glass.settings.darkTheme) .32f else .8f), Color.White.copy(alpha = .03f), glass.accent.copy(alpha = .13f))), shape)
+    if (acrylic) result = result.background(Brush.linearGradient(listOf(Color.White.copy(alpha = .17f), Color.Transparent, Color.White.copy(alpha = .05f))))
+    result = result.border(if (acrylic) 1.5.dp else 1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = if (glass.settings.darkTheme) .32f else .8f), Color.White.copy(alpha = .03f), glass.accent.copy(alpha = .13f))), shape)
     return result
 }
 

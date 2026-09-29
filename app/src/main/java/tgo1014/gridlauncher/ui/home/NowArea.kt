@@ -24,7 +24,7 @@ fun NowArea(haze: HazeState) {
     val ongoing = notifications.filter { it.isNow && it.packageName !in glass.settings.hiddenPreviewApps }.take(6)
     var selected by remember { mutableStateOf<String?>(null) }
     val duration = if (glass.motion) 240 else 0
-    AnimatedVisibility(visible = glass.settings.showNow && glass.settings.liveTilesEnabled && ongoing.isNotEmpty(), enter = fadeIn(tween(duration)) + expandVertically(tween(duration)), exit = fadeOut(tween(duration)) + shrinkVertically(tween(duration))) {
+    AnimatedVisibility(visible = glass.settings.showNow && glass.settings.liveTilesEnabled && !glass.quiet && ongoing.isNotEmpty(), enter = fadeIn(tween(duration)) + expandVertically(tween(duration)), exit = fadeOut(tween(duration)) + shrinkVertically(tween(duration))) {
     Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
         Text("Now", style = MaterialTheme.typography.labelLarge, color = glass.ink, modifier = Modifier.padding(bottom = 6.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

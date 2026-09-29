@@ -16,10 +16,10 @@ android {
 
     defaultConfig {
         applicationId = "io.github.notquiteog.gridlauncher"
-        minSdk = 26
+        minSdk = 37
         targetSdk = 37
         versionCode = 21000 + (providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 0)
-        versionName = "2.1.0"
+        versionName = "2.2.0"
         val distribution = providers.gradleProperty("distributionChannel").orElse("github").get()
         require(distribution in listOf("github", "play"))
         buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"$distribution\"")
@@ -94,7 +94,6 @@ dependencies {
     implementation(libs.lazytable)
     implementation(libs.haze)
     implementation(libs.haze.materials)
-    implementation(libs.material.kolor)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.app.turbine)
