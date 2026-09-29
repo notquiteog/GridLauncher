@@ -352,15 +352,23 @@ class LauncherTest {
             GridItem(2, App("Battery", BuiltInTiles.BATTERY), 1, x = 2)
         ))
         fun folder() = runBlocking { compose.activity.appsManager.homeGridFlow.first() }.first { it.app.name == "Tools" }
+        // Every picker row carries the same tag, and what a row will do is its content description,
+        // so a row can never be confused with the Battery tile sitting behind the sheet.
+        fun row(action: String) = hasTestTag("folderAppRow") and hasContentDescription("$action Battery to folder")
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithText("Edit layout").performClick()
         compose.onNodeWithContentDescription("Tools").performClick()
-        compose.onNodeWithText("Add or remove apps").performClick()
-        // The row is selected by what it will do, so it cannot be confused with the Battery tile behind.
-        compose.onNodeWithContentDescription("Add Battery to folder").performScrollTo().performClick()
+        // The sheet's own column scrolls, so the button is reached by scrolling to it, not by tapping
+        // wherever it happens to sit.
+        compose.onNodeWithText("Add or remove apps").performScrollTo().performClick()
+        compose.waitUntil(5000) { compose.onAllNodes(row("Add")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(row("Add")).performScrollTo().performClick()
         compose.waitUntil(5000) { folder().children.any { it.packageName == BuiltInTiles.BATTERY } }
         assertEquals(setOf(BuiltInTiles.CLOCK, BuiltInTiles.BATTERY), folder().children.map { it.packageName }.toSet())
-        compose.onNodeWithContentDescription("Remove Battery from folder").performScrollTo().performClick()
+        // The sheet is only re-handed the stored folder once the grid flow reaches the state, so wait
+        // for the row to offer its other action rather than assuming it has already flipped.
+        compose.waitUntil(5000) { compose.onAllNodes(row("Remove")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(row("Remove")).performScrollTo().performClick()
         compose.waitUntil(5000) { folder().children.none { it.packageName == BuiltInTiles.BATTERY } }
         assertEquals(listOf(BuiltInTiles.CLOCK), folder().children.map { it.packageName })
     }

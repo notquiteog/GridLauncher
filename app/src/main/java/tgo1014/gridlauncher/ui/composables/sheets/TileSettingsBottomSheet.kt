@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tgo1014.gridlauncher.domain.FolderEdit
@@ -96,7 +97,9 @@ fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEv
                         Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
                             folderApps.forEach { app ->
                                 val inFolder = FolderEdit.contains(item, app)
-                                Row(Modifier.fillMaxWidth().clickable { onFolderChanged(FolderEdit.toggled(item, app)) }
+                                // One tag on the whole row, so a test can name the row itself rather
+                                // than a label inside it.
+                                Row(Modifier.fillMaxWidth().testTag("folderAppRow").clickable { onFolderChanged(FolderEdit.toggled(item, app)) }
                                     .semantics { contentDescription = (if (inFolder) "Remove " else "Add ") + app.name + " to folder" },
                                     verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(inFolder, null); Text(app.name, Modifier.weight(1f))
