@@ -89,7 +89,9 @@ fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEv
                     if (editing) {
                         LazyColumn(Modifier.heightIn(max = 260.dp)) { items(folderApps, key = { it.packageName }) { app ->
                             val inside = (item.children + item.childFolders.map { it.app }).any { it.packageName == app.packageName }
-                            Row(Modifier.fillMaxWidth().clickable {
+                            Row(Modifier.fillMaxWidth()
+                                .semantics { contentDescription = (if (inside) "Remove ${app.name} from folder" else "Add ${app.name} to folder") }
+                                .clickable {
                                 val children = if (inside) item.children - app else item.children + app
                                 val nested = item.childFolders.filterNot { it.app.packageName == app.packageName }
                                 onFolderChanged(item.copy(children = children, childFolders = nested))
