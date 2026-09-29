@@ -289,15 +289,15 @@ class LauncherTest {
         seed(emptyList())
         val activity = compose.activity
         val manager = android.appwidget.AppWidgetManager.getInstance(activity)
-        // Never bind our own live-tile provider: this test is about a third-party widget resizing.
-        val foreign = manager.installedProviders.filter { it.provider.packageName != activity.packageName }
-        val provider = foreign.firstOrNull { it.provider.packageName.contains("deskclock") } ?: foreign.first()
-        assertFalse(provider.provider.packageName == activity.packageName)
+        // Bind our own live-tile provider: it is always present and has no configure activity,
+        // so binding cannot pull another app's configuration screen in front of the launcher.
+        val component = android.content.ComponentName(activity, tgo1014.gridlauncher.live.GridLiveTileProvider::class.java)
+        assertTrue(manager.installedProviders.any { it.provider == component })
         val id = activity.widgetHost.allocateAppWidgetId()
         val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
         try {
             automation.adoptShellPermissionIdentity("android.permission.BIND_APPWIDGET")
-            assertTrue(manager.bindAppWidgetIdIfAllowed(id, provider.provider))
+            assertTrue(manager.bindAppWidgetIdIfAllowed(id, component))
             automation.dropShellPermissionIdentity()
             seed(listOf(GridItem(81, App("Test widget", BuiltInTiles.WIDGET), 1, widgetId = id)))
             compose.onNodeWithText("All apps").performClick()
