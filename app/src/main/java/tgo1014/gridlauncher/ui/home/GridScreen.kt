@@ -73,23 +73,27 @@ fun GridScreenScreen(
             else -> false
         }
     }
-    // Start fades back in after an app closes, the way the stock launchers do.
-    val fade = remember { androidx.compose.animation.core.Animatable(1f) }
-    var resumes by remember { mutableIntStateOf(0) }
+    // Start fades back in after an app closes, the way the stock launchers do. A plain state flag
+    // rather than a suspending Animatable, so nothing has to block the main thread from a lifecycle
+    // callback.
+    var inForeground by remember { mutableStateOf(true) }
     val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> kotlinx.coroutines.runBlocking { fade.snapTo(0f) }
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> resumes++
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> inForeground = false
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> inForeground = true
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(resumes) { if (resumes > 0 && glass.motion) fade.animateTo(1f, androidx.compose.animation.core.tween(220)) }
-    Column(Modifier.fillMaxSize().systemBarsPadding().graphicsLayer { alpha = fade.value }
+    val returnAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (inForeground) 1f else 0f,
+        animationSpec = if (glass.motion) androidx.compose.animation.core.tween(200) else androidx.compose.animation.core.snap(),
+        label = "Return")
+    Column(Modifier.fillMaxSize().systemBarsPadding().graphicsLayer { alpha = returnAlpha }
         .focusRequester(focusRequester).focusable().onPreviewKeyEvent(::handleKey)) {
         Box(Modifier.fillMaxWidth().animateContentSize(if (glass.motion) spring(dampingRatio = .9f, stiffness = 350f) else snap())) {
             if (state.tileSettings.oneHanded) Spacer(Modifier.height(100.dp))
