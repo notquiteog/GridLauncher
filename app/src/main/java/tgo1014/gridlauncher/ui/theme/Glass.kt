@@ -96,21 +96,22 @@ fun rememberGlass(settings: TileSettings): GlassEnvironment {
         }
     }
     // Android's own preferences: a zeroed animation scale and the high-contrast a11y switch both
-    // mean the user has asked for less movement or more contrast, so the launcher follows them.
-    val systemPrefs by produceState(1f to false) {
-        while (true) {
-            val scale = runCatching {
-                android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
-            }.getOrDefault(1f)
-            val contrast = runCatching {
-                val manager = context.getSystemService(android.view.accessibility.AccessibilityManager::class.java)
-                android.provider.Settings.Secure.getInt(context.contentResolver, "high_text_contrast_enabled", 0) == 1 ||
-                    manager?.isEnabled == true && android.provider.Settings.Secure.getInt(context.contentResolver, "accessibility_display_daltonizer_enabled", 0) == 0 &&
-                    android.provider.Settings.Global.getFloat(context.contentResolver, "high_text_contrast", 0f) > 0f
-            }.getOrDefault(false)
-            value = scale to contrast
-            delay(3_000)
-        }
+    // mean the user has asked for less movement or more contrast. These change rarely, so they are
+    // read on resume rather than on a timer, which keeps the launcher off the critical path.
+    fun readSystemPrefs(): Pair<Float, Boolean> = Pair(
+        runCatching {
+            android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        }.getOrDefault(1f),
+        runCatching {
+            android.provider.Settings.Secure.getInt(context.contentResolver, "high_text_contrast_enabled", 0) == 1 ||
+                android.provider.Settings.Global.getFloat(context.contentResolver, "high_text_contrast", 0f) > 0f
+        }.getOrDefault(false),
+    )
+    var systemPrefs by remember { mutableStateOf(readSystemPrefs()) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) systemPrefs = readSystemPrefs() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
     return GlassEnvironment(settings, tint ?: Color(settings.accentColor), power, locked, quiet,
         animationsEnabled = android.animation.ValueAnimator.areAnimatorsEnabled() && systemPrefs.first > 0f,
