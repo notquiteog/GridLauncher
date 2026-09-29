@@ -346,6 +346,25 @@ class LauncherTest {
         assertEquals(1, runBlocking { context.appsManager.homeGridFlow.first().size })
     }
 
+    @Test fun aFolderIsEditedFromItsTileSheetInBothDirections() {
+        seed(listOf(
+            GridItem(1, App("Tools", BuiltInTiles.FOLDER), 2, children = listOf(App("Clock", BuiltInTiles.CLOCK))),
+            GridItem(2, App("Battery", BuiltInTiles.BATTERY), 1, x = 2)
+        ))
+        fun folder() = runBlocking { compose.activity.appsManager.homeGridFlow.first() }.first { it.app.name == "Tools" }
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").performClick()
+        compose.onNodeWithContentDescription("Tools").performClick()
+        compose.onNodeWithText("Add or remove apps").performClick()
+        // The row is selected by what it will do, so it cannot be confused with the Battery tile behind.
+        compose.onNodeWithContentDescription("Add Battery to folder").performScrollTo().performClick()
+        compose.waitUntil(5000) { folder().children.any { it.packageName == BuiltInTiles.BATTERY } }
+        assertEquals(setOf(BuiltInTiles.CLOCK, BuiltInTiles.BATTERY), folder().children.map { it.packageName }.toSet())
+        compose.onNodeWithContentDescription("Remove Battery from folder").performScrollTo().performClick()
+        compose.waitUntil(5000) { folder().children.none { it.packageName == BuiltInTiles.BATTERY } }
+        assertEquals(listOf(BuiltInTiles.CLOCK), folder().children.map { it.packageName })
+    }
+
     @Test fun customLayoutsCanBeCreatedRenamedAndDeleted() {
         seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
         compose.onNodeWithText("All apps").performClick()

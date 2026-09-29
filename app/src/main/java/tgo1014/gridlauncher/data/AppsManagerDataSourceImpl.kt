@@ -59,7 +59,10 @@ class AppsManagerDataSourceImpl @Inject constructor(
                 val current = runCatching { json.decodeFromString<List<GridItem>>(it[gridKey]!!) }.getOrDefault(emptyList())
                 val refreshed = current.mapNotNull { tile ->
                     val app = if (tile.app.packageName.startsWith("grid://")) tile.app else installed[tile.app.packageName]
-                    app?.let { tile.copy(app = if (tile.shortcutId != null) app.copy(name = tile.app.name) else app, children = tile.children.mapNotNull { child -> installed[child.packageName] }) }
+                    app?.let { tile.copy(app = if (tile.shortcutId != null) app.copy(name = tile.app.name) else app,
+                        // A folder holds hub tiles too, and those are ours rather than a package:
+                        // pruning them here is what made an edited folder lose its contents.
+                        children = tile.children.mapNotNull { child -> tgo1014.gridlauncher.domain.FolderEdit.keepsAfterRefresh(child, installed) }) }
                 }
                 val columns = runCatching { json.decodeFromString<tgo1014.gridlauncher.domain.models.TileSettings>(it[stringPreferencesKey("settingsKey")]!!) }.getOrDefault(tgo1014.gridlauncher.domain.models.TileSettings()).gridColumns
                 it[gridKey] = json.encodeToString(reflow(tgo1014.gridlauncher.domain.GridPlacement.compact(refreshed, columns).map { it.stampGroup(columns) }, columns))

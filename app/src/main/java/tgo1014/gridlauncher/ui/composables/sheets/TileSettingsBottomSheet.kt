@@ -24,7 +24,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tgo1014.gridlauncher.domain.FolderEdit
+import tgo1014.gridlauncher.domain.models.App
 import tgo1014.gridlauncher.domain.models.Direction
+import tgo1014.gridlauncher.live.BuiltInTiles
 import tgo1014.gridlauncher.live.NotificationTiles
 import tgo1014.gridlauncher.ui.composables.NotificationActions
 import tgo1014.gridlauncher.ui.models.GridItem
@@ -35,7 +38,7 @@ import tgo1014.gridlauncher.ui.theme.LocalGlass
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEvent: (TileEvent) -> Unit = {},
-    accentColor: Long = 0xFF0078D7) {
+    accentColor: Long = 0xFF0078D7, folderApps: List<App> = emptyList(), onFolderChanged: (GridItem) -> Unit = {}) {
     val context = LocalContext.current
     val glass = LocalGlass.current
     val notifications by NotificationTiles.notifications.collectAsStateWithLifecycle()
@@ -81,6 +84,27 @@ fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEv
                     listOf("Left" to Direction.Left, "Up" to Direction.Up, "Down" to Direction.Down, "Right" to Direction.Right).forEach { (label,direction) ->
                         OutlinedButton(onClick = { onTileEvent(TileEvent.OnTileMoved(direction)) }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) { Text(label) }
                     }
+                }
+                if (item.childCount > 0 || item.app.packageName == BuiltInTiles.FOLDER) {
+                    Text("Inside this folder", style = MaterialTheme.typography.titleMedium)
+                    var editing by remember(item.id) { mutableStateOf(false) }
+                    val inside = (item.children + item.childFolders.map { it.app }).joinToString(", ") { it.name }
+                    Text(if (inside.isBlank()) "Empty" else inside, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    if (editing) {
+                        // A plain column inside the sheet's own scroll, so every candidate keeps its
+                        // semantics: a lazy list would only compose the handful of rows on screen.
+                        Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+                            folderApps.forEach { app ->
+                                val inFolder = FolderEdit.contains(item, app)
+                                Row(Modifier.fillMaxWidth().clickable { onFolderChanged(FolderEdit.toggled(item, app)) }
+                                    .semantics { contentDescription = (if (inFolder) "Remove " else "Add ") + app.name + " to folder" },
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(inFolder, null); Text(app.name, Modifier.weight(1f))
+                                }
+                            }
+                        }
+                        TextButton(onClick = { editing = false }) { Text("Done") }
+                    } else TextButton(onClick = { editing = true }) { Text("Add or remove apps") }
                 }
                 TextButton(onClick = { onTileEvent(TileEvent.OnRemoveClicked) }) { Text("Remove") }
             }

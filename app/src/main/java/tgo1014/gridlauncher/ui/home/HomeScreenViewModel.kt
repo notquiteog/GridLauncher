@@ -104,6 +104,12 @@ class HomeScreenViewModel @Inject constructor(
         if (runCatching { profiles.delete(name) }.onFailure(::toast).isFailure) return@launch
         resetState()
     }
+    /** Replaces a folder's contents from its edit sheet. */
+    fun onFolderChanged(folder: GridItem) = viewModelScope.launch {
+        val grid = appsManager.homeGridFlow.first()
+        val columns = settingsRepository.tileSettingsFlow.first().gridColumns
+        appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, folder, columns))
+    }
     private fun toast(cause: Throwable) = android.widget.Toast.makeText(context, cause.message ?: "Cannot change layouts", android.widget.Toast.LENGTH_LONG).show()
 
     /** A handed-off layout name is only honoured when this device still has it. */

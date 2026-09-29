@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeState
+import tgo1014.gridlauncher.domain.FolderEdit
 import tgo1014.gridlauncher.domain.models.App
 import tgo1014.gridlauncher.live.BuiltInTiles
 import tgo1014.gridlauncher.live.QuietHours
@@ -43,7 +44,7 @@ fun GridScreenScreen(
     onItemLongClicked: (GridItem) -> Unit = {}, onFooterClicked: () -> Unit = {},
     onTileEvent: (TileEvent) -> Unit = {}, onEditLayout: (Boolean) -> Unit = {},
     onSettingsEvent: (SettingsEvent) -> Unit = {}, showAllAppsLink: Boolean = true,
-    onOpenApp: (App) -> Unit = {},
+    onOpenApp: (App) -> Unit = {}, onFolderChanged: (GridItem) -> Unit = {},
     onHandoffFocusHandled: () -> Unit = {},
 ) {
     val glass = LocalGlass.current
@@ -118,7 +119,8 @@ fun GridScreenScreen(
             }
         }
     }
+    val folderApps = remember(state.appList) { FolderEdit.candidates(state.appList) }
     TileSettingsBottomSheet(isShowing = state.isEditingLayout && state.itemBeingEdited != null,
         item = state.itemBeingEdited, onTileEvent = onTileEvent,
-        )
+        folderApps = folderApps, onFolderChanged = onFolderChanged)
 }
