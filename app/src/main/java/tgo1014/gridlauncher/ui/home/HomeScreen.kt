@@ -36,7 +36,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import tgo1014.gridlauncher.ui.theme.pageSwipeGuard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.util.lerp
@@ -206,8 +205,6 @@ private fun HomeScreen(
             .fillMaxSize()
             .background(if (state.tileSettings.isTransparencyEnabled) Color.Black.copy(alpha) else Color.Transparent)
             .onSizeChanged { pagerWidth = it.width }
-            // A full swipe is needed to change page, so a wobble never does.
-            .pageSwipeGuard(with(LocalDensity.current) { pagerWidth.toDp() })
     ) {
         when (it) {
             0 -> start(true)
