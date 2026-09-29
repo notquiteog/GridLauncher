@@ -90,20 +90,23 @@ fun AsyncImage(
 fun Modifier.pageSwipeGuard(pageWidth: Dp, fraction: Float = 0.35f): Modifier = composed {
     val density = LocalDensity.current
     val threshold = remember(pageWidth, fraction) { with(density) { pageWidth.toPx() * fraction } }
-    var travelled by remember { mutableFloatStateOf(0f) }
+    // A plain holder, not snapshot state: this only gates the gesture and must not recompose
+    // anything, or every pointer move would rebuild the whole screen.
+    val gesture = remember { IntArray(1) }
     nestedScroll(object : NestedScrollConnection {
         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
             if (available.x == 0f) return Offset.Zero
-            val remaining = (threshold - abs(travelled)).coerceAtLeast(0f)
-            if (abs(available.x) <= remaining) {
-                travelled += available.x
+            val travelled = java.lang.Float.intBitsToFloat(gesture[0])
+            val remaining = threshold - abs(travelled)
+            if (abs(available.x) <= remaining.coerceAtLeast(0f)) {
+                gesture[0] = java.lang.Float.floatToRawIntBits(travelled + available.x)
                 return Offset(available.x, 0f)
             }
-            travelled = 0f
+            gesture[0] = 0
             return Offset.Zero
         }
         override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-            if (consumed.x == 0f && available.x == 0f) travelled = 0f
+            if (consumed.x == 0f && available.x == 0f) gesture[0] = 0
             return Offset.Zero
         }
     })
