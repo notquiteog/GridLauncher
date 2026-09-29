@@ -83,29 +83,6 @@ fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEv
                         OutlinedButton(onClick = { onTileEvent(TileEvent.OnTileMoved(direction)) }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) { Text(label) }
                     }
                 }
-                if (item.childCount > 0 || item.app.packageName == BuiltInTiles.FOLDER) {
-                    Text("Inside this folder", style = MaterialTheme.typography.titleMedium)
-                    var editing by remember(item.id) { mutableStateOf(false) }
-                    if (editing) {
-                        LazyColumn(Modifier.heightIn(max = 260.dp)) { items(folderApps, key = { it.packageName }) { app ->
-                            val inside = (item.children + item.childFolders.map { it.app }).any { it.packageName == app.packageName }
-                            Row(Modifier.fillMaxWidth()
-                                .semantics { contentDescription = (if (inside) "Remove ${app.name} from folder" else "Add ${app.name} to folder") }
-                                .clickable {
-                                val children = if (inside) item.children - app else item.children + app
-                                val nested = item.childFolders.filterNot { it.app.packageName == app.packageName }
-                                onFolderChanged(item.copy(children = children, childFolders = nested))
-                            }, verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(inside, null); Text(app.name, Modifier.weight(1f))
-                            }
-                        } }
-                        TextButton(onClick = { editing = false }) { Text("Done") }
-                    } else {
-                        val inside = (item.children + item.childFolders.map { it.app }).joinToString(", ") { it.name }
-                        Text(if (inside.isBlank()) "Empty" else inside, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                        TextButton(onClick = { editing = true }) { Text("Add or remove apps") }
-                    }
-                }
                 TextButton(onClick = { onTileEvent(TileEvent.OnRemoveClicked) }) { Text("Remove") }
             }
         }

@@ -346,30 +346,6 @@ class LauncherTest {
         assertEquals(1, runBlocking { context.appsManager.homeGridFlow.first().size })
     }
 
-    @Test fun aFolderCanBeEditedFromItsTileSheet() {
-        seed(listOf(
-            GridItem(1, App("Tools", BuiltInTiles.FOLDER), 2, children = listOf(App("Clock", BuiltInTiles.CLOCK))),
-            GridItem(2, App("Battery", BuiltInTiles.BATTERY), 1, x = 2)
-        ))
-        compose.onNodeWithText("All apps").performClick()
-        compose.onNodeWithText("Edit layout").performClick()
-        compose.onNodeWithContentDescription("Tools").performClick()
-        compose.onNodeWithText("Add or remove apps").performClick()
-        // The picker offers installed apps and the built-in tiles.
-        compose.onNodeWithContentDescription("Add Calendar to folder").performClick()
-        compose.waitUntil(5000) {
-            runBlocking { compose.activity.appsManager.homeGridFlow.first().first { it.app.name == "Tools" } }
-                .children.any { it.packageName == BuiltInTiles.CALENDAR }
-        }
-        assertEquals(2, runBlocking { compose.activity.appsManager.homeGridFlow.first() }.first { it.app.name == "Tools" }.children.size)
-        // Tapping the same entry again takes it back out.
-        compose.onNodeWithContentDescription("Remove Calendar from folder").performClick()
-        compose.waitUntil(5000) {
-            runBlocking { compose.activity.appsManager.homeGridFlow.first().first { it.app.name == "Tools" } }
-                .children.none { it.packageName == BuiltInTiles.CALENDAR }
-        }
-    }
-
     @Test fun customLayoutsCanBeCreatedRenamedAndDeleted() {
         seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
         compose.onNodeWithText("All apps").performClick()

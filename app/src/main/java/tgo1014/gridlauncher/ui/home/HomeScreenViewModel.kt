@@ -97,13 +97,6 @@ class HomeScreenViewModel @Inject constructor(
         if (runCatching { profiles.rename(current, name) }.onFailure(::toast).isFailure) return@launch
         resetState()
     }
-    /** Replaces a folder's contents from its edit sheet. */
-    fun onFolderChanged(folder: GridItem) = viewModelScope.launch {
-        val grid = appsManager.homeGridFlow.first()
-        val columns = settingsRepository.tileSettingsFlow.first().gridColumns
-        appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, folder.copy(id = folder.id), columns))
-    }
-
     fun onHandoffFocusHandled() { _stateFlow.update { it.copy(handoffFocus = null) } }
 
     fun deleteLayout(name: String) = viewModelScope.launch {

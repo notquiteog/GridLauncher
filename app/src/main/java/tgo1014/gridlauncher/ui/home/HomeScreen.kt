@@ -97,7 +97,6 @@ fun HomeScreen(
         onDeleteLayout = viewModel::deleteLayout,
         onHandoffFocusHandled = viewModel::onHandoffFocusHandled,
         onPinToHotseat = { viewModel.pinToHotseat(it) },
-        onFolderChanged = viewModel::onFolderChanged,
         frequent = frequent,
         onEditLayout = viewModel::setEditingLayout
     )
@@ -125,7 +124,6 @@ private fun HomeScreen(
     onDeleteLayout: (String) -> Unit = {},
     onHandoffFocusHandled: () -> Unit = {},
     onPinToHotseat: (String) -> Unit = {},
-    onFolderChanged: (GridItem) -> Unit = {},
     frequent: List<String> = emptyList(),
     onEditLayout: (Boolean) -> Unit = {},
 ) {
@@ -181,7 +179,7 @@ private fun HomeScreen(
         GridScreenScreen(state = state, hazeState = hazeState, onItemClicked = onItemClicked,
             onItemDropped = onItemDropped, onItemLongClicked = onItemLongClicked, onTileEvent = onTileEvent,
             onEditLayout = onEditLayout, showAllAppsLink = showFooter, onHandoffFocusHandled = onHandoffFocusHandled,
-            onOpenApp = onAppClicked, onFolderChanged = onFolderChanged,
+            onOpenApp = onAppClicked,
             onFooterClicked = { scope.launch { pagerState.animateScrollToPage(1) } })
     }
     val allApps: @Composable () -> Unit = {

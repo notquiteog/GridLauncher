@@ -43,7 +43,7 @@ fun GridScreenScreen(
     onItemLongClicked: (GridItem) -> Unit = {}, onFooterClicked: () -> Unit = {},
     onTileEvent: (TileEvent) -> Unit = {}, onEditLayout: (Boolean) -> Unit = {},
     onSettingsEvent: (SettingsEvent) -> Unit = {}, showAllAppsLink: Boolean = true,
-    onOpenApp: (App) -> Unit = {}, onFolderChanged: (GridItem) -> Unit = {},
+    onOpenApp: (App) -> Unit = {},
     onHandoffFocusHandled: () -> Unit = {},
 ) {
     val glass = LocalGlass.current
@@ -116,5 +116,5 @@ fun GridScreenScreen(
     }
     TileSettingsBottomSheet(isShowing = state.isEditingLayout && state.itemBeingEdited != null,
         item = state.itemBeingEdited, onTileEvent = onTileEvent,
-        folderApps = state.appList + BuiltInTiles.apps, onFolderChanged = onFolderChanged)
+        )
 }
