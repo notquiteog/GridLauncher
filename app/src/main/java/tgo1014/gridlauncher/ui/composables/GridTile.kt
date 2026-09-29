@@ -38,6 +38,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,6 +55,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.res.painterResource
 import tgo1014.gridlauncher.ui.theme.readableInk
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
@@ -272,15 +274,7 @@ fun GridTile(
                     } }
                 }
             } else if (photoSource.isEmpty()) {
-                if (builtIn) Text(when (item.app.packageName) {
-                    BuiltInTiles.CLOCK -> "◷"
-                    BuiltInTiles.CALENDAR -> java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH).toString()
-                    BuiltInTiles.PEOPLE -> "● ●"
-                    BuiltInTiles.BATTERY -> "▰"
-                    BuiltInTiles.MUSIC -> "▶"
-                    BuiltInTiles.STORAGE -> "▤"
-                    else -> "▦"
-                }, color = tileInk, fontSize = if (expanded) 38.sp else 22.sp, modifier = Modifier.align(Alignment.Center))
+                if (builtIn) HubGlyph(item.app.packageName, if (item.width == 1 && item.height == 1) Modifier.align(Alignment.Center).size(26.dp) else Modifier, tileInk)
                 else {
                     val iconSize = minOf(maxWidth * .72f, maxHeight - if (tileSettings.isAppLabelsHidden) 12.dp else 32.dp).coerceAtLeast(24.dp)
                     AppIconImage(item.app.icon.iconFile, Modifier.align(Alignment.Center).offset(y = if (tileSettings.isAppLabelsHidden) 0.dp else (-8).dp).size(iconSize), item.app.icon.fill, if (tileSettings.iconTint) tileInk else null)
@@ -290,12 +284,19 @@ fun GridTile(
             if (expanded && !locked && previewed != null && previewed.packageName !in tileSettings.hiddenPreviewApps && maxWidth >= 180.dp && previewed.actions.isNotEmpty() && !isMusic) {
                 Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(previewed, compact = true, ink = tileInk) }
             }
+            if (builtIn && item.width >= 2) HubGlyph(item.app.packageName, Modifier.align(Alignment.BottomEnd).padding(10.dp).size(16.dp), tileInk)
             if (!tileSettings.isAppLabelsHidden && !isMusic && !item.isGroup) Text(item.app.name, color = tileInk, fontSize = if (expanded) 13.sp else 11.sp, maxLines = 2,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (expanded) 10.dp else 3.dp).padding(end = if (matching.isNotEmpty() && tileSettings.showTileCounts) 26.dp else 0.dp))
-            if (matching.isNotEmpty() && tileSettings.showTileCounts && !item.isGroup) Text(if (matching.size > 99) "99+" else matching.size.toString(), color = tileInk, fontSize = if (expanded) 24.sp else 16.sp,
-                modifier = Modifier.align(Alignment.BottomEnd).sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            if (matching.isNotEmpty() && tileSettings.showTileCounts && !item.isGroup) {
+                if (tileSettings.badgeAsDot) Box(Modifier.align(Alignment.BottomEnd).padding(8.dp).size(10.dp)
+                    .clip(CircleShape).background(tileInk)
                     .semantics { contentDescription = "${matching.size} notifications. Double tap to preview" }
-                    .clickable { showPreview = true }.padding(6.dp))
+                    .clickable { showPreview = true })
+                else Text(if (matching.size > 99) "99+" else matching.size.toString(), color = tileInk, fontSize = if (expanded) 24.sp else 16.sp,
+                    modifier = Modifier.align(Alignment.BottomEnd).sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .semantics { contentDescription = "${matching.size} notifications. Double tap to preview" }
+                        .clickable { showPreview = true }.padding(6.dp))
+            }
         }
         if (isKeyboardFocused) {
             Box(Modifier.fillMaxSize().border(3.dp, Color.White))
@@ -350,5 +351,15 @@ private fun TileGlyph(glyph: String, ink: Color, description: String, prominent:
     Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clickable(onClick = onClick)
         .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
         Text(glyph, color = ink, fontSize = if (prominent) 22.sp else 15.sp, maxLines = 1)
+    }
+}
+
+/** The designed mark a hub tile carries, so a live tile never looks like a plain app icon. */
+@Composable
+private fun HubGlyph(id: String, modifier: Modifier, ink: Color) {
+    if (modifier != Modifier) {
+        Box(modifier) { Icon(painterResource(BuiltInTiles.glyph(id)), null, tint = ink, modifier = Modifier.fillMaxSize()) }
+    } else {
+        Icon(painterResource(BuiltInTiles.glyph(id)), null, tint = ink, modifier = modifier.size(26.dp))
     }
 }

@@ -3,7 +3,8 @@ package tgo1014.gridlauncher.ui.theme
 import android.app.KeyguardManager
 import android.content.*
 import android.os.PowerManager
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -149,16 +150,26 @@ fun Modifier.glassSurface(haze: HazeState? = null): Modifier {
     return result
 }
 
-/** Brief perspective tilt when content changes, paused by system and user motion settings. */
+/**
+ * The Windows Phone live-tile flip: when a tile's content changes it turns away on its vertical
+ * axis and comes back, rather than cross-fading in place. Paused by the system animation scale and
+ * by the launcher's own Reduce motion switch.
+ */
 @Composable
 fun TileTurn(key: Any?, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val glass = LocalGlass.current
-    var tilt by remember { mutableFloatStateOf(0f) }
+    val flip = remember { Animatable(0f) }
     var previous by remember { mutableStateOf(key) }
     LaunchedEffect(key, glass.motion, glass.settings.isTileFlipEnabled) {
-        if (previous != key && glass.motion && glass.settings.isTileFlipEnabled) { tilt = -7f; kotlinx.coroutines.delay(100); tilt = 0f }
+        if (previous != key && glass.motion && glass.settings.isTileFlipEnabled) {
+            flip.snapTo(0f); flip.animateTo(-180f, tween(150, easing = FastOutSlowInEasing))
+            flip.snapTo(180f); flip.animateTo(360f, tween(180, easing = FastOutSlowInEasing))
+        }
         previous = key
     }
-    val rotation by animateFloatAsState(if (glass.motion) tilt else 0f, tween(220), label = "Tile tilt")
-    Box(modifier.graphicsLayer { rotationX = rotation; cameraDistance = 14 * density }) { content() }
+    Box(modifier.graphicsLayer {
+        rotationY = flip.value; cameraDistance = 12 * density
+        // Past 90 degrees the tile is showing its back, so hide it rather than draw it mirrored.
+        alpha = if (kotlin.math.abs(((flip.value % 360) + 360) % 360 - 180f) > 90f) 0f else 1f
+    }) { content() }
 }

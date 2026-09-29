@@ -12,6 +12,7 @@ import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import tgo1014.gridlauncher.R
 import tgo1014.gridlauncher.domain.models.App
 import java.text.DateFormat
 import java.util.Date
@@ -32,6 +33,8 @@ object BuiltInTiles {
     const val STORAGE = "grid://storage"
     const val STEPS = "grid://steps"
     const val WALLET = "grid://wallet"
+    const val DATA = "grid://data"
+    const val GREETING = "grid://greeting"
     const val CONTACTS = "grid://contacts"
     const val DESTINATION = "grid://destination"
     const val GROUP = "grid://group"
@@ -39,9 +42,31 @@ object BuiltInTiles {
     val apps = listOf(
         App("Clock", CLOCK), App("Calendar", CALENDAR), App("People", PEOPLE), App("Music", MUSIC),
         App("Photos", PHOTOS), App("Battery", BATTERY), App("Storage", STORAGE),
-        App("Steps", STEPS), App("Wallet", WALLET),
+        App("Steps", STEPS), App("Wallet", WALLET), App("Data", DATA), App("Greeting", GREETING),
     )
-    fun isHub(id: String) = id in setOf(CLOCK, CALENDAR, PEOPLE, MUSIC, PHOTOS, BATTERY, STORAGE, STEPS, WALLET)
+    fun isHub(id: String) = id in setOf(CLOCK, CALENDAR, PEOPLE, MUSIC, PHOTOS, BATTERY, STORAGE, STEPS, WALLET, DATA, GREETING)
+
+    /**
+     * The designed glyph each hub tile carries, the way Windows Phone marked a live tile with its
+     * own mark rather than an app icon. Small tiles show it centred; wider tiles tuck it into the
+     * bottom corner so it reads as an indicator and not as the tile's subject.
+     */
+    fun glyph(id: String): Int = when (id) {
+        CLOCK -> R.drawable.hub_clock
+        CALENDAR -> R.drawable.hub_calendar
+        PEOPLE, CONTACTS -> R.drawable.hub_people
+        MUSIC -> R.drawable.hub_music
+        PHOTOS -> R.drawable.hub_photos
+        BATTERY -> R.drawable.hub_battery
+        STORAGE -> R.drawable.hub_storage
+        STEPS -> R.drawable.hub_steps
+        WALLET -> R.drawable.hub_wallet
+        DATA -> R.drawable.hub_data
+        GREETING -> R.drawable.hub_greeting
+        FOLDER -> R.drawable.hub_app
+        DESTINATION -> R.drawable.hub_destination
+        else -> R.drawable.hub_app
+    }
 
     /** Every built-in a backup may bring back, including the ones not offered in Add to Start. */
     val restorable: Map<String, App> = (apps + App("Folder", FOLDER) + App("Group", GROUP)).associateBy { it.packageName }
@@ -56,6 +81,8 @@ object BuiltInTiles {
         STORAGE -> Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)
         STEPS -> Intent("android.settings.ACTIVITY_RECOGNIZATION")
         WALLET -> Intent(android.service.quickaccesswallet.QuickAccessWalletService.ACTION_VIEW_WALLET)
+        DATA -> Intent(Settings.ACTION_DATA_ROAMING_SETTINGS)
+        GREETING -> Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)
         else -> null
     }
 
@@ -74,6 +101,8 @@ object BuiltInTiles {
         STORAGE -> storage(context)
         STEPS -> steps(context)
         WALLET -> ("Tap to pay" to if (WalletTiles.available(context)) "Open your wallet" else "Not available on this device")
+        DATA -> data(context)
+        GREETING -> greeting(context)
         else -> null
     }
 
@@ -110,12 +139,30 @@ object BuiltInTiles {
         return "${gigabytes(used)} used" to "${gigabytes(free)} free of ${gigabytes(total)}"
     }
 
+    /** A plain time-of-day greeting and whatever is next, the way Start greeted you before Cortana. */
+    private fun greeting(context: Context): Pair<String, String> {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val hello = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
+        val next = agenda(context).second
+        return hello to if (next.startsWith("No upcoming") || next.startsWith("Tap to")) "Here is your day" else next
+    }
+
+    private fun data(context: Context): Pair<String, String> {
+        val mb = UsageTiles.usedMb(context)
+        if (mb < 0) return "Data" to "Not available on this device"
+        val network = if (UsageTiles.isOnWifi(context)) "WiFi" else "Mobile"
+        return "${network}: ${formatMb(mb)} used" to "Since Android started counting"
+    }
+
+    private fun formatMb(mb: Long) = if (mb >= 1024) String.format(java.util.Locale.getDefault(), "%.1f GB", mb / 1024.0) else "$mb MB"
+
     private fun steps(context: Context): Pair<String, String> {
         if (!SensorTiles.available(context)) return "Steps" to "No step sensor"
         val reading = SensorTiles.start(context)
         val count = reading.steps
-        return if (count == null) "Steps" to "Waiting for a reading"
-        else "$count steps" to (reading.bpm?.let { "$it bpm" } ?: "Today")
+        if (count == null) return "Steps" to "Waiting for a reading"
+        val (steps, distance, heart) = SensorTiles.detail(count, reading.bpm)
+        return steps to "$distance · $heart"
     }
 
     private fun gigabytes(bytes: Long): String {

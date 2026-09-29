@@ -29,6 +29,8 @@ data class TileSettings(
     val drawerSort: String = "alphabetical",
     val iconTint: Boolean = false,
     val fullscreen: Boolean = false,
+    /** Windows Phone could show a bare dot instead of a count. */
+    val badgeAsDot: Boolean = false,
     val hiddenPreviewApps: Set<String> = emptySet(),
     val workSchedule: Boolean = false,
     val workStartHour: Int = 9,

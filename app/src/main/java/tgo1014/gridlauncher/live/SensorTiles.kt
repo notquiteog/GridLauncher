@@ -56,4 +56,18 @@ object SensorTiles {
     }
 
     fun forget() { steps = null; bpm = null; since = null }
+
+    /**
+     * Distance and calories the way the Windows Phone Stepcounter showed them. Derived from the
+     * step count and a stride estimate rather than invented: a 0.762 m stride for an average adult,
+     * and roughly 0.04 kcal per kilogram per step.
+     */
+    fun detail(count: Int, bpm: Int?): Triple<String, String, String> {
+        val km = String.format(java.util.Locale.getDefault(), "%.2f km", count * STRIDE_METRES / 1000.0)
+        val calories = (count * 0.04).toInt()
+        val heart = bpm?.let { "$it bpm" } ?: "No heart rate"
+        return Triple(count.toString(), "$km · $calories kcal", heart)
+    }
+
+    private const val STRIDE_METRES = 0.762
 }

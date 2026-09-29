@@ -8,10 +8,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import tgo1014.gridlauncher.ui.theme.AsyncImage
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -52,6 +55,7 @@ fun SettingsBottomSheet(
     var destinationDialog by remember { mutableStateOf(false) }
     var copyTarget by remember { mutableStateOf<String?>(null) }
     var folderDialog by remember { mutableStateOf(false) }
+    var contactTileDialog by remember { mutableStateOf(false) }
     var groupDialog by remember { mutableStateOf(false) }
     var exportTheme by remember { mutableStateOf(false) }
     var importTheme by remember { mutableStateOf(false) }
@@ -133,6 +137,7 @@ fun SettingsBottomSheet(
             SettingSwitch("Show notification previews", tileSettings.showNotificationText) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showNotificationText = it))) }
             SettingSwitch("Stack notifications on wide tiles", tileSettings.stackNotifications) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(stackNotifications = it))) }
             SettingSwitch("Show tile counts", tileSettings.showTileCounts) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showTileCounts = it))) }
+            SettingSwitch("Counts as dots", tileSettings.badgeAsDot) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(badgeAsDot = it))) }
             TextButton(onClick = { privacyDialog = true }) { Text("Choose apps allowed to show previews") }
             Text("Notification access enables counts. Previews stay on this device. Android may hide sensitive content.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Manage notification access") }
@@ -158,6 +163,8 @@ fun SettingsBottomSheet(
                 OutlinedButton(onClick = { activity?.addWidget() }, modifier = Modifier.weight(1f).padding(4.dp)) { Text("Android widget") }
             }
             Row { TextButton(onClick = { activity?.chooseContacts() }) { Text("Choose people") }; TextButton(onClick = { activity?.chooseDocument() }) { Text("Pin document") } }
+            TextButton(onClick = { contactTileDialog = true }) { Text("Pin a person\u2019s photo") }
+            Text("Puts their photo and latest conversation on Start, the way a face sat on the Windows Phone grid.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { destinationDialog = true }) { Text("Pin a website or route") }
             TextButton(onClick = { folderDialog = true }) { Text("Create an app folder") }
             TextButton(onClick = { groupDialog = true }) { Text("Add a group header") }
@@ -279,6 +286,23 @@ fun SettingsBottomSheet(
             onAddSpecial(GridItem(app = App(name.trim(), BuiltInTiles.GROUP), width = tileSettings.gridColumns, height = 1, groupLabel = name.trim()))
             groupDialog = false
         }) { Text("Add") } }, dismissButton = { TextButton(onClick = { groupDialog = false }) { Text("Cancel") } })
+    }
+    if (contactTileDialog) {
+        val favorites = androidx.compose.runtime.remember { tgo1014.gridlauncher.live.ContactTiles.favorites(context) }
+        AlertDialog(onDismissRequest = { contactTileDialog = false }, title = { Text("Pin a person") }, text = {
+            if (favorites.isEmpty()) Text("Star a contact, or choose people in Customize Start, and they can be pinned here.")
+            else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(favorites, key = { it.key }) { person ->
+                Row(Modifier.fillMaxWidth().clickable {
+                    onAddSpecial(GridItem(app = App(person.name, BuiltInTiles.CONTACTS), width = 2, contact = person))
+                    contactTileDialog = false
+                }, verticalAlignment = Alignment.CenterVertically) {
+                    if (person.photo != null) AsyncImage(person.photo, Modifier.size(40.dp).clip(CircleShape))
+                    else Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center) { Text(person.name.take(1).uppercase(), color = Color.White) }
+                    Text(person.name, Modifier.padding(start = 12.dp))
+                }
+            } }
+        }, confirmButton = { TextButton(onClick = { contactTileDialog = false }) { Text("Close") } })
     }
     if (folderDialog) {
         var name by remember { mutableStateOf("") }

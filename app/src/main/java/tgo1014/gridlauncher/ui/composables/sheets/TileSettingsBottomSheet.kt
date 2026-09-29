@@ -5,8 +5,6 @@ import android.os.Process
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import tgo1014.gridlauncher.domain.models.App
-import tgo1014.gridlauncher.live.BuiltInTiles
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -37,7 +35,7 @@ import tgo1014.gridlauncher.ui.theme.LocalGlass
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEvent: (TileEvent) -> Unit = {},
-    folderApps: List<App> = emptyList(), onFolderChanged: (GridItem) -> Unit = {}) {
+    accentColor: Long = 0xFF0078D7) {
     val context = LocalContext.current
     val glass = LocalGlass.current
     val notifications by NotificationTiles.notifications.collectAsStateWithLifecycle()
@@ -50,7 +48,8 @@ fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEv
                 if (!item.isGroup) {
                     Text("Tile color", style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val options = listOf<Long?>(null) + listOf(0xFF0078D7, 0xFF008A00, 0xFFB4009E, 0xFFD24726, 0xFF643EBF, 0xFF006D77, 0xFF1C1C1C)
+                        val options = listOf<Long?>(null, accentColor) +
+                            listOf(0xFF0078D7, 0xFF008A00, 0xFFB4009E, 0xFFD24726, 0xFF643EBF, 0xFF006D77, 0xFF1C1C1C).distinct()
                         options.forEach { color ->
                             val selected = item.tileColor == color
                             Box(Modifier.size(36.dp)
