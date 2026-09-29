@@ -86,7 +86,11 @@ object LiveTileWidget {
     internal suspend fun draw(context: Context, manager: AppWidgetManager, widgetIds: Set<Int>) {
         val settings = readSettings(context)
         val quiet = QuietHours.active(settings)
-        val notifications = if (quiet) emptyList() else NotificationTiles.notifications.value
+        // A live tile is drawn by the system, on whatever surface the user has put it on, so it
+        // follows the same lock rule as the in-app tiles: a locked device shows no notification
+        // content at all, on a widget or anywhere else.
+        val locked = runCatching { context.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked }.getOrDefault(true)
+        val notifications = if (quiet || locked) emptyList() else NotificationTiles.notifications.value
             .filter { it.packageName !in settings.hiddenPreviewApps }
         widgetIds.forEach { runCatching { manager.updateAppWidget(it, views(context, manager, it, notifications, settings, quiet)) } }
     }
@@ -140,10 +144,10 @@ object LiveTileWidget {
             else {
                 views.setViewVisibility(viewId, View.VISIBLE)
                 views.setTextViewText(viewId, action.title)
-                views.setOnClickPendingIntent(viewId, pending(context, ActionReceiver.ACTION_ACT, latest.key, index, action.title.toString()))
+                views.setOnClickPendingIntent(viewId, pending(context, ActionReceiver.ACTION_ACT, latest.key, index))
             }
         }
-        views.setOnClickPendingIntent(R.id.live_tile_root, pending(context, ActionReceiver.ACTION_OPEN, latest.key, -1, latest.title))
+        views.setOnClickPendingIntent(R.id.live_tile_root, pending(context, ActionReceiver.ACTION_OPEN, latest.key, -1))
         return views
     }
 
@@ -151,11 +155,19 @@ object LiveTileWidget {
         context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(packageName, 0)).toString()
     }.getOrDefault(packageName)
 
-    private fun pending(context: Context, action: String, key: String, index: Int, request: String): PendingIntent {
+    /**
+     * The widget's own tap, and nothing else.
+     *
+     * SECURITY: a PendingIntent is handed to the system and can outlive this process, so its extras
+     * are not ours to keep private in. It carries the notification key and the action's position and
+     * nothing else - the action title and the notification title are looked up in memory when the
+     * tap arrives, so no notification text is ever placed in an object another process can read.
+     */
+    private fun pending(context: Context, action: String, key: String, index: Int): PendingIntent {
         val intent = Intent(context, ActionReceiver::class.java).setAction(action)
             .putExtra(ActionReceiver.EXTRA_KEY, key).putExtra(ActionReceiver.EXTRA_INDEX, index)
-            .putExtra("request", request.take(40)).setPackage(context.packageName)
-        return PendingIntent.getBroadcast(context, "$action$key$index$request".hashCode(), intent,
+            .setPackage(context.packageName)
+        return PendingIntent.getBroadcast(context, "$action$key$index".hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
     }
 }

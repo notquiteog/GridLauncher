@@ -24,6 +24,15 @@ object SearchSource {
     /** Who you are thinking of, then what arrived, then what is next. */
     val order = listOf(PERSON, NOTIFICATION, EVENT)
 
+    /**
+     * SECURITY: the only sources that may ever be written to disk.
+     *
+     * Notification content has no persisted form in this launcher, under any setting, at any time.
+     * It is read, shown and searched in memory, and is gone with the process. Anything added here
+     * starts being written to the on-device AppSearch database, so this set is the whole boundary.
+     */
+    val indexable = setOf(PERSON, EVENT)
+
     fun label(source: String) = when (source) {
         PERSON -> "People"
         NOTIFICATION -> "Notifications"
@@ -33,6 +42,44 @@ object SearchSource {
 }
 
 data class SearchSection(val source: String, val rows: List<SearchRow>)
+
+/**
+ * One thing the on-device search index is allowed to contain.
+ *
+ * Deliberately a different type from [SearchRow] so that the boundary is enforced by the compiler:
+ * a notification row has no way to become a [PersistedRow], because the only function that makes
+ * one refuses to be given a row it may not keep.
+ */
+data class PersistedRow(val id: String, val source: String, val title: String, val text: String, val subtitle: String, val stamp: Long)
+
+/**
+ * The one boundary between what this launcher shows and what it keeps.
+ *
+ * Everything above this line is memory: read on demand, drawn on screen, searched by a substring
+ * scan, and gone when the process dies. Everything below it is on disk, and only a [PersistedRow]
+ * - a person's own starred name and number, a calendar title the user already gave us permission
+ * to read - can cross. Notification titles, bodies, conversations and call state never do, under any
+ * setting, and there is no switch that would turn that on.
+ */
+object SearchPersistence {
+    /** The only sources that may cross into a persisted store. */
+    val indexableSources: Set<String> = SearchSource.indexable
+
+    /**
+     * The rows that may be written, and nothing else. Called by the index writer itself, so the
+     * filter is the writer's own precondition rather than a promise its callers keep.
+     */
+    fun indexable(rows: List<SearchRow>): List<PersistedRow> = rows.mapNotNull { row ->
+        if (row.source !in SearchSource.indexable) return@mapNotNull null
+        PersistedRow(row.id, row.source, row.title, row.text, row.subtitle, row.stamp)
+    }
+
+    /** A fingerprint over what would be written, so a burst of notifications costs no write at all. */
+    fun digest(rows: List<PersistedRow>): Int = rows.fold(11) { hash, row -> hash * 31 + row.hashCode() }
+
+    /** Any source that made it back out of a stale database is dropped before it can be drawn. */
+    fun discardUnindexable(rows: List<SearchRow>): List<SearchRow> = rows.filter { it.source in SearchSource.indexable }
+}
 
 object StartSearch {
     /** Six words is already past what a launcher's search bar is for. */
@@ -86,7 +133,12 @@ object StartSearch {
  *
  * Notification text reaches the screen only when the user asked for it, is not in a quiet window
  * or meeting mode, and has not excluded the sending app per app. An excluded notification is not
- * merely hidden: it is absent from the index, so it cannot come back through search either.
+ * merely hidden: it is absent from the rows entirely, so it cannot come back through search either.
+ *
+ * SECURITY: what this returns is a memory-only row. It is scanned by [StartSearch.filter] and
+ * nothing else. [SearchPersistence.indexable] drops it, so it can never reach the AppSearch
+ * database, the layout backup, the DataStore or any other store. A process restart loses it,
+ * which is the point.
  */
 fun notificationRows(settings: TileSettings, notifications: List<TileNotification>): List<SearchRow> {
     if (!settings.showNotificationText || QuietHours.active(settings)) return emptyList()
@@ -98,7 +150,10 @@ fun notificationRows(settings: TileSettings, notifications: List<TileNotificatio
                 id = "n:${notification.key}",
                 source = SearchSource.NOTIFICATION,
                 title = notification.title.ifBlank { notification.packageName }.take(200),
-                text = notification.text.take(1000),
+                // A messaging app puts the conversation in the style rather than in the body, so a
+                // search that only read title and text would miss every message it never summarised.
+                // This row is the whole search answer, so it has to carry what the user can see.
+                text = (listOf(notification.text) + notification.messages).joinToString(" ").take(1000),
                 subtitle = notification.packageName,
                 stamp = notification.time,
             )

@@ -83,6 +83,8 @@ import androidx.compose.ui.semantics.customActions
 import kotlinx.coroutines.withContext
 import tgo1014.gridlauncher.domain.models.TileSettings
 import tgo1014.gridlauncher.live.BuiltInTiles
+import tgo1014.gridlauncher.live.CallTiles
+import tgo1014.gridlauncher.live.CategoryApps
 import tgo1014.gridlauncher.live.MediaTiles
 import tgo1014.gridlauncher.live.NowPlaying
 import tgo1014.gridlauncher.live.PhotoTiles
@@ -127,6 +129,16 @@ fun GridTile(
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionRevision++ }
     var showFolder by remember { mutableStateOf(false) }
     var showHub by remember { mutableStateOf(false) }
+    // A call takes the tile over rather than sitting beside the last message: it is the one thing
+    // happening on this app right now, and it is what the user opened the launcher to deal with.
+    // Both steps are remembered, because a full screen of tiles would otherwise re-project every
+    // notification and re-query every package on every frame.
+    val callSignals = remember(notifications) { notifications.map(CallTiles::signal) }
+    val call = remember(callSignals, item.app.packageName, tileSettings, glass.quiet, glass.locked) {
+        if (tileSettings.liveTilesEnabled && tileSettings.showNotificationText && !glass.quiet)
+            CallTiles.callFor(callSignals, item.app.packageName, tileSettings, locked = glass.locked) { CategoryApps.label(context, it).orEmpty() }
+        else null
+    }
     val builtIn = item.app.packageName.startsWith("grid://")
     val hub = if (item.app.packageName == BuiltInTiles.PEOPLE) showHub else showPeople
     val nowPlaying by MediaTiles.now.collectAsStateWithLifecycle()
@@ -200,7 +212,7 @@ fun GridTile(
             }
         }
         .onFocusChanged { if (it.isFocused) onFocus() }
-        .semantics { contentDescription = item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = listOf(CustomAccessibilityAction(if (isEditMode) "Edit tile" else "App shortcuts") { if (isEditMode) onItemLongClicked(item) else showNativeActions = true; true }, CustomAccessibilityAction("Preview notifications") { showPreview = true; true }) }
+        .semantics { contentDescription = if (call != null) call.describe() else item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = listOf(CustomAccessibilityAction(if (isEditMode) "Edit tile" else "App shortcuts") { if (isEditMode) onItemLongClicked(item) else showNativeActions = true; true }, CustomAccessibilityAction("Preview notifications") { showPreview = true; true }) }
         .focusable()
         .combinedClickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = { if (isEditMode) onItemClicked(item) else open() }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); if (isEditMode) onItemLongClicked(item) else showNativeActions = true })) {
         if (item.isGroup) {
@@ -230,7 +242,17 @@ fun GridTile(
             val isMusic = item.app.packageName == BuiltInTiles.MUSIC
             val preview = matching.getOrNull(page.mod(matching.size.coerceAtLeast(1)))
             val previewed = preview?.takeIf { tileSettings.showNotificationText && !glass.quiet }
-            if (isMusic && expanded) {
+            if (call != null) {
+                // The call replaces the tile's live content: the last message is not what the user
+                // needs to see while this app is ringing. The label still shows, so the tile is
+                // still the same tile, and the notification action row stays away because the call
+                // panel owns the controls.
+                Box(Modifier.fillMaxSize().padding(
+                    start = 12.dp, end = 12.dp,
+                    top = 10.dp,
+                    bottom = if (tileSettings.isAppLabelsHidden) 8.dp else (if (expanded) 30.dp else 22.dp),
+                ), contentAlignment = Alignment.CenterStart) { CallTilePanel(call, tileInk, expanded) }
+            } else if (isMusic && expanded) {
                 NowPlayingTile(nowPlaying, Modifier.fillMaxSize().padding(10.dp), ink = tileInk,
                     onToggle = { MediaTiles.togglePlayPause() }, onNext = { MediaTiles.next() }, onPrevious = { MediaTiles.previous() })
             } else {
@@ -281,7 +303,7 @@ fun GridTile(
                 }
             }
             }
-            if (expanded && !locked && previewed != null && previewed.packageName !in tileSettings.hiddenPreviewApps && maxWidth >= 180.dp && previewed.actions.isNotEmpty() && !isMusic) {
+            if (expanded && !locked && previewed != null && previewed.packageName !in tileSettings.hiddenPreviewApps && maxWidth >= 180.dp && previewed.actions.isNotEmpty() && !isMusic && call == null) {
                 Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(previewed, compact = true, ink = tileInk) }
             }
             if (builtIn && item.width >= 2) HubGlyph(item.app.packageName, Modifier.align(Alignment.BottomEnd).padding(10.dp).size(16.dp), tileInk)

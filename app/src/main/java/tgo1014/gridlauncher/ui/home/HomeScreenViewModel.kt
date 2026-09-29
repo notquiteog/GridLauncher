@@ -236,7 +236,9 @@ class HomeScreenViewModel @Inject constructor(
                 )
             }
 
-            is SettingsEvent.OnSettingsUpdated -> runCatching { settingsRepository.updateSettings(event.tileSettings) }.onFailure { android.widget.Toast.makeText(context, it.message ?: "Cannot update layout", android.widget.Toast.LENGTH_LONG).show() }.let { }
+            is SettingsEvent.OnSettingsUpdated -> runCatching { settingsRepository.updateSettings(event.tileSettings) }
+                .onSuccess { tgo1014.gridlauncher.live.StartSearchIndex.refresh(context) }
+                .onFailure { android.widget.Toast.makeText(context, it.message ?: "Cannot update layout", android.widget.Toast.LENGTH_LONG).show() }
             is SettingsEvent.OnWallpaperPicked -> storeWallpaperPickedUseCase(event.uri, settingsRepository.tileSettingsFlow.first().darkTheme)
                 ?.let { settingsRepository.updateSettings(settingsRepository.tileSettingsFlow.first().copy(wallpaperPath = it)) }
             SettingsEvent.OnWallpaperRemoved -> onRemoveWallpaperUseCase()

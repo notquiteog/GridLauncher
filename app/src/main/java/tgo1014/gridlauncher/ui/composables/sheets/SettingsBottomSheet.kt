@@ -138,6 +138,13 @@ fun SettingsBottomSheet(
             SettingSwitch("Stack notifications on wide tiles", tileSettings.stackNotifications) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(stackNotifications = it))) }
             SettingSwitch("Show tile counts", tileSettings.showTileCounts) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showTileCounts = it))) }
             SettingSwitch("Counts as dots", tileSettings.badgeAsDot) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(badgeAsDot = it))) }
+            HorizontalDivider()
+            Text("Search index", style = MaterialTheme.typography.titleLarge)
+            SettingSwitch("Store a search index on this device", tileSettings.searchIndexEnabled) {
+                onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(searchIndexEnabled = it)))
+            }
+            Text("Off by default, and Start does not need it: search already reads your starred people and the next week of calendar as you type. Turning this on writes those two to a private Android search database on this device so the drawer can answer instantly, and turning it off deletes them again.", style = MaterialTheme.typography.bodySmall)
+            Text("Notification text, conversations and call state are never written to disk, whichever way this is set. They are read, shown and searched in memory, and disappear when Start closes.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { privacyDialog = true }) { Text("Choose apps allowed to show previews") }
             Text("Notification access enables counts. Previews stay on this device. Android may hide sensitive content.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Manage notification access") }

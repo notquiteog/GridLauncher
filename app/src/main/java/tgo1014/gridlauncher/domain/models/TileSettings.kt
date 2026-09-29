@@ -38,6 +38,14 @@ data class TileSettings(
     val handoffEnabled: Boolean = false,
     val isAppLabelsHidden: Boolean = false,
     val wallpaperPath: String? = null,
+    /**
+     * SECURITY: off by default, and opt-in means exactly one thing - the starred people and the
+     * calendar titles you have already granted access to are written to a private on-device search
+     * database so the drawer can answer a query before it has read anything. Notification text,
+     * conversation content and call state are never written there under any setting; see
+     * `SearchPersistence`, which is where that is enforced rather than here.
+     */
+    val searchIndexEnabled: Boolean = false,
 ) {
 
     val gridColumns: Int get() = tilesAcross.coerceIn(2, 6)

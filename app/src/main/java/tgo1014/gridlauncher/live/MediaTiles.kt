@@ -52,7 +52,13 @@ object MediaTiles {
     private fun activeSession(context: Context) = runCatching {
         context.getSystemService(MediaSessionManager::class.java)
             .getActiveSessions(ComponentName(context, LiveNotificationService::class.java))
-            .firstOrNull { session -> session.playbackState != null || session.metadata != null }
+            .filter { session -> session.playbackState != null || session.metadata != null }
+            // Spotify, YouTube Music and a paused podcast can all hold a session at once, and the
+            // order the platform returns them in is not promised. The one actually playing wins, and
+            // the rest are ordered by name so the card does not hop between them on every refresh.
+            .sortedWith(compareByDescending<MediaController> { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+                .thenBy { it.packageName })
+            .firstOrNull()
     }.getOrNull()
 
     fun refresh(context: Context) {

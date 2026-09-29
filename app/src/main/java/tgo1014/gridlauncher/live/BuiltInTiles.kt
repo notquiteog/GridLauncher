@@ -182,21 +182,35 @@ object BuiltInTiles {
         }
     }
 
-    private fun agenda(context: Context): Pair<String, String> {
-        val today = java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()).format(Date())
-        if (!granted(context, Manifest.permission.READ_CALENDAR)) return today to "Tap to connect calendar"
+    /**
+     * The next few events, the way Windows Phone's agenda showed a day rather than a single entry.
+     * An empty list is the honest answer when the calendar cannot be read or has nothing coming:
+     * the tile falls back to its own wording and the board leaves the card out entirely.
+     */
+    fun agendaEvents(context: Context, limit: Int = 6): List<CalendarEvent> {
+        if (!granted(context, Manifest.permission.READ_CALENDAR)) return emptyList()
         val now = System.currentTimeMillis()
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon()
         android.content.ContentUris.appendId(uri, now)
         android.content.ContentUris.appendId(uri, now + 7 * 86400000L)
         return runCatching {
-            context.contentResolver.query(uri.build(), arrayOf(CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN, CalendarContract.Instances.ALL_DAY),
-                "${CalendarContract.Instances.END} >= ?", arrayOf(now.toString()), "${CalendarContract.Instances.BEGIN} ASC")?.use {
-                if (it.moveToFirst()) {
-                    it.getString(0).orEmpty() to if (it.getInt(2) == 1) "All day · $today" else DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it.getLong(1)))
-                } else today to "No upcoming events"
-            } ?: (today to "No upcoming events")
-        }.getOrDefault(today to "Calendar unavailable")
+            context.contentResolver.query(uri.build(), arrayOf(CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN, CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.EVENT_LOCATION),
+                "${CalendarContract.Instances.END} >= ?", arrayOf(now.toString()), "${CalendarContract.Instances.BEGIN} ASC")?.use { cursor ->
+                buildList {
+                    while (cursor.moveToNext() && size < limit.coerceIn(1, 30)) add(CalendarEvent(
+                        cursor.getString(0).orEmpty().take(120), cursor.getLong(1), cursor.getInt(2) == 1, cursor.getString(3).orEmpty().take(80)))
+                }
+            }.orEmpty()
+        }.getOrDefault(emptyList())
+    }
+
+    /** The tile's own two-line reading: the next event, or why there is none. */
+    private fun agenda(context: Context): Pair<String, String> {
+        val today = java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()).format(Date())
+        if (!granted(context, Manifest.permission.READ_CALENDAR)) return today to "Tap to connect calendar"
+        val event = agendaEvents(context, 1).firstOrNull() ?: return today to "No upcoming events"
+        return event.title to if (event.allDay) "All day · $today"
+        else DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(event.begin))
     }
 
     private fun people(context: Context): Pair<String, String> {

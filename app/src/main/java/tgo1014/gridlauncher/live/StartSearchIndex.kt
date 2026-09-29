@@ -1,6 +1,5 @@
 package tgo1014.gridlauncher.live
 
-import android.Manifest
 import android.app.appsearch.AppSearchBatchResult
 import android.app.appsearch.AppSearchManager
 import android.app.appsearch.AppSearchResult
@@ -13,17 +12,19 @@ import android.app.appsearch.PutDocumentsRequest
 import android.app.appsearch.RemoveByDocumentIdRequest
 import android.app.appsearch.SearchSpec
 import android.app.appsearch.SetSchemaRequest
-import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.provider.CalendarContract
 import android.provider.ContactsContract
 import android.widget.Toast
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import tgo1014.gridlauncher.domain.models.TileSettings
 import java.util.concurrent.Executor
@@ -40,13 +42,23 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * The drawer's search, answered by `android.app.appsearch`.
+ * The drawer's search, and the one place in the launcher where anything leaves memory for disk.
  *
- * One private session, one schema, and a small snapshot of what the launcher is already allowed
- * to read. AppSearch is a system service, so whether an ordinary sideloaded build gets a working
- * private index is not something the app can assume: every entry point here is wrapped, a failure
- * just leaves the in-memory rows to answer instead, and the drawer is written against [SearchRow]
- * alone so it cannot tell the difference.
+ * Two answers to the same question, kept deliberately unequal:
+ *
+ *  - **In memory.** Notifications, people and the calendar are collected into [_rows] and scanned
+ *    with [StartSearch.filter]. Notification content lives here and only here: read on demand,
+ *    drawn on screen, and gone when the process dies.
+ *  - **On disk, opt-in.** `android.app.appsearch` is a system service with a private on-device
+ *    database, so whether an ordinary sideloaded build gets a working session is not something the
+ *    app can assume. It is off unless the user asks for it, it is only ever handed
+ *    [SearchPersistence.indexable] output, and every entry point is wrapped: a failure just leaves
+ *    the in-memory scan to answer, and the drawer is written against [SearchRow] alone so it
+ *    cannot tell the difference.
+ *
+ * SECURITY: the writer takes a [PersistedRow], not a [SearchRow]. A notification row has no way to
+ * become one, so "this launcher does not store notification data" is a property of the types on the
+ * writing path rather than of a setting nobody remembers to check.
  */
 object StartSearchIndex {
     const val DATABASE = "gridlauncher-start"
@@ -60,6 +72,9 @@ object StartSearchIndex {
     private const val PROPERTY_SOURCE = "source"
     private const val PROPERTY_STAMP = "stamp"
     private const val PROPERTY_REF = "ref"
+
+    /** Set once the database has been emptied for good, so the purge is not repeated every launch. */
+    private val PURGED = booleanPreferencesKey("searchIndexPurged")
 
     /** Long enough for a burst of notifications to settle, short enough to feel current. */
     private const val DEBOUNCE_MS = 3_000L
@@ -76,29 +91,32 @@ object StartSearchIndex {
     val rows = _rows.asStateFlow()
 
     @Volatile private var session: AppSearchSession? = null
-    @Volatile private var pending = true
     @Volatile private var started = false
+    @Volatile private var optedIn: Boolean? = null
     @Volatile private var fingerprint: Int? = null
     @Volatile private var indexedIds: Set<String> = emptySet()
     @Volatile private var cleared = false
 
+    /**
+     * One flag, however many notifications arrive, and one wake-up however long the loop has been
+     * idle. Conflated, so a burst during a burst collapses into a single re-read.
+     */
+    private val signal = Channel<Unit>(Channel.CONFLATED)
+
     /** Call from the application and from the launcher's resume. Idempotent. */
     @Synchronized fun start(context: Context) {
-        pending = true
-        if (started) return
-        started = true
         val app = context.applicationContext
-        openSession(app)
+        if (started) { signal.trySend(Unit); return }
+        started = true
         scope.launch {
+            // The first pass must not wait a quarter of an hour for work nobody has queued yet.
+            signal.trySend(Unit)
             while (true) {
-                // Idle: look back in a quarter of an hour. Told to work: debounce first, so a
-                // burst of notification ticks costs one re-index rather than one each.
-                if (!pending) {
-                    delay(SWEEP_MS)
-                    if (!pending) continue
-                }
+                // Idle: look back in a quarter of an hour, or sooner if anything asked to be re-read.
+                withTimeoutOrNull(SWEEP_MS) { signal.receive() }
+                // Told to work: debounce first, so a burst of notification ticks costs one re-read
+                // rather than one each.
                 delay(DEBOUNCE_MS)
-                pending = false
                 runCatching { refreshNow(app) }
             }
         }
@@ -108,28 +126,32 @@ object StartSearchIndex {
     fun refresh(context: Context) {
         val app = context.applicationContext
         start(app)
-        pending = true
         scope.launch { runCatching { refreshNow(app) } }
     }
 
     /** The cheap half of a refresh, for the places that only know their own data changed. */
     fun invalidate() {
-        pending = true
+        signal.trySend(Unit)
     }
 
     /**
-     * Answers a drawer query. Uses the index when one is open, and the same rows scanned by hand
-     * when it is not, so a device without AppSearch searches exactly as well as one with it.
+     * Answers a drawer query. Uses the index when the user has asked for one, and the same rows
+     * scanned by hand when they have not, so a device without AppSearch searches exactly as well as
+     * one with it, and a device with the index switched off still finds its notifications.
+     *
+     * SECURITY: the two are unioned, never substituted. The index holds people and calendar only,
+     * so answering from it alone would quietly stop notifications from being findable the moment
+     * the user turned indexing on - the one thing the in-memory scan exists to guarantee.
      */
     suspend fun search(query: String): List<SearchRow> {
         val phrase = StartSearch.phrase(query)
         if (phrase.isEmpty()) return emptyList()
-        val open = session ?: return StartSearch.filter(rows.value, query)
+        val memory = StartSearch.filter(rows.value, query)
+        val open = session ?: return memory
         return withContext(Dispatchers.IO) {
-            val hits = runCatching { runQuery(open, phrase) }.getOrElse { abandonSession(); null }
-            // The hand-written scan is a superset of the index, so an empty page means the index
-            // is behind the data rather than that nothing matched.
-            if (hits.isNullOrEmpty()) StartSearch.filter(rows.value, query) else hits
+            val hits = runCatching { runQuery(open, phrase) }.getOrElse { abandonSession(); emptyList() }
+            val found = hits.map { it.id }.toSet()
+            hits + memory.filterNot { it.id in found }
         }
     }
 
@@ -147,20 +169,35 @@ object StartSearchIndex {
         true
     }.onFailure { Toast.makeText(context, "No app can open that", Toast.LENGTH_SHORT).show() }.getOrDefault(false)
 
-    // ---- indexing -------------------------------------------------------------------------------
+    // ---- collecting ----------------------------------------------------------------------------
 
     private suspend fun refreshNow(context: Context) = work.withLock {
-        val snapshot = collect(context, readSettings(context))
+        val settings = readSettings(context)
+        val snapshot = collect(context, settings)
         _rows.value = snapshot
-        val open = session
-        val digest = StartSearch.digest(snapshot)
-        if (open != null && digest != fingerprint) {
-            runCatching { write(open, snapshot) }
-                .onSuccess { fingerprint = digest; indexedIds = snapshot.map { it.id }.toSet() }
+        if (!settings.searchIndexEnabled) {
+            standDown(context)
+            return@withLock
+        }
+        optedIn = true
+        // The session arrives asynchronously; adopting it is what asks for the first documents.
+        val open = session ?: run { openSession(context) { session = setSchema(it); invalidate() }; return@withLock }
+        // The fingerprint is taken over what would be written, not over what is in memory, so a
+        // burst of notifications moves it not at all and costs no database write.
+        val writable = SearchPersistence.indexable(snapshot)
+        val digest = SearchPersistence.digest(writable)
+        if (digest != fingerprint) {
+            runCatching { write(open, writable) }
+                .onSuccess { fingerprint = digest; indexedIds = writable.map { it.id }.toSet() }
                 .onFailure { abandonSession() }
         }
     }
 
+    /**
+     * The rows the drawer searches. Notification content enters here and stops: this list is
+     * published to the UI, scanned by `StartSearch.filter`, and handed to `SearchPersistence`, which
+     * drops every notification row on the way to the disk.
+     */
     private fun collect(context: Context, settings: TileSettings): List<SearchRow> =
         (notificationRows(settings, NotificationTiles.notifications.value)
             + contactRows(ContactTiles.favorites(context))
@@ -168,51 +205,74 @@ object StartSearchIndex {
             .sortedBy { it.id }
 
     /** The same week-long Instances query the Calendar tile already runs, permission or no. */
-    private fun upcomingEvents(context: Context): List<CalendarEvent> {
-        if (!BuiltInTiles.granted(context, Manifest.permission.READ_CALENDAR)) return emptyList()
-        val now = System.currentTimeMillis()
-        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon()
-        ContentUris.appendId(uri, now)
-        ContentUris.appendId(uri, now + 7 * 86_400_000L)
-        return runCatching {
-            context.contentResolver.query(uri.build(), arrayOf(
-                CalendarContract.Instances.TITLE,
-                CalendarContract.Instances.BEGIN,
-                CalendarContract.Instances.ALL_DAY,
-                CalendarContract.Instances.EVENT_LOCATION), null, null, "${CalendarContract.Instances.BEGIN} ASC")?.use { c ->
-                buildList {
-                    while (c.moveToNext() && size < 30) add(CalendarEvent(c.getString(0).orEmpty().take(120), c.getLong(1), c.getInt(2) == 1, c.getString(3).orEmpty().take(80)))
-                }
-            }.orEmpty()
-        }.getOrDefault(emptyList())
-    }
+    private fun upcomingEvents(context: Context): List<CalendarEvent> = BuiltInTiles.agendaEvents(context, 30)
 
     /** The app's single DataStore instance; a second factory over the same file is illegal. */
     private suspend fun readSettings(context: Context): TileSettings = runCatching {
-        EntryPointAccessors.fromApplication(context.applicationContext, SettingsEntryPoint::class.java).dataStore()
-            .data.first()[stringPreferencesKey("settingsKey")]?.let { Json.decodeFromString<TileSettings>(it) } ?: TileSettings()
+        store(context).data.first()[stringPreferencesKey("settingsKey")]?.let { Json.decodeFromString<TileSettings>(it) } ?: TileSettings()
     }.getOrDefault(TileSettings())
+
+    private fun store(context: Context) =
+        EntryPointAccessors.fromApplication(context.applicationContext, SettingsEntryPoint::class.java).dataStore()
+
+    /**
+     * The index is off, which is where it starts and where it belongs.
+     *
+     * Nothing is written, any session this process opened is dropped, and once per install whatever
+     * an earlier build put in the database is emptied. A launcher that has already stored a user's
+     * notification text does not stop being trusted by deciding not to write more of it: the files
+     * have to go. The marker keeps this to once per install rather than once per launch, and a
+     * device with no working AppSearch simply has nothing to empty.
+     */
+    private suspend fun standDown(context: Context) {
+        if (optedIn == false) return
+        optedIn = false
+        val open = session
+        session = null
+        fingerprint = null
+        indexedIds = emptySet()
+        cleared = false
+        if (open != null) runCatching { open.close() }
+        if (runCatching { store(context).data.first()[PURGED] == true }.getOrDefault(false)) return
+        val purge = awaitSession(context) ?: return
+        runCatching { clearNamespace(purge) }
+        runCatching { purge.close() }
+        runCatching { store(context).edit { it[PURGED] = true } }
+    }
 
     // ---- AppSearch ------------------------------------------------------------------------------
 
-    private fun openSession(context: Context) {
+    /**
+     * Opens a session and hands it to [adopt] once its schema is in place, which is also what asks
+     * for the first documents to be written. A device without a working AppSearch never gets here,
+     * and the drawer's own scan answers instead.
+     */
+    private fun openSession(context: Context, adopt: suspend (AppSearchSession) -> Unit) {
+        requestSession(context) { result ->
+            val open = result.getResultValue()
+            if (result.isSuccess && open != null) scope.launch { runCatching { adopt(open) } }
+        }
+    }
+
+    /** The same request, awaited, for the one-off purge that has to know whether it got a session. */
+    private suspend fun awaitSession(context: Context): AppSearchSession? {
+        val manager = runCatching { context.getSystemService(AppSearchManager::class.java) }.getOrNull() ?: return null
+        runCatching { System.loadLibrary("appsearch") }
+        val result = runCatching { await<AppSearchSession> { done -> manager.createSearchSession(searchContext(), direct) { done(it) } } }.getOrNull()
+        return result?.takeIf { it.isSuccess }?.getResultValue()
+    }
+
+    private fun requestSession(context: Context, callback: (AppSearchResult<AppSearchSession>) -> Unit) {
         val manager = runCatching { context.getSystemService(AppSearchManager::class.java) }.getOrNull() ?: return
         // The index is a JNI library the calling process loads itself. A build without it throws
         // here and never gets a session, which is exactly the fallback case.
         runCatching { System.loadLibrary("appsearch") }
-        runCatching {
-            manager.createSearchSession(AppSearchManager.SearchContext.Builder(DATABASE).build(), direct) { result: AppSearchResult<AppSearchSession> ->
-                val open = result.getResultValue()
-                if (result.isSuccess && open != null) scope.launch {
-                    // The session is only adopted once its schema is in place, and asking for a
-                    // re-index is what gets the first documents in.
-                    runCatching { setSchema(open) }.onSuccess { session = open; pending = true }
-                }
-            }
-        }
+        runCatching { manager.createSearchSession(searchContext(), direct, callback) }
     }
 
-    private suspend fun setSchema(open: AppSearchSession) {
+    private fun searchContext() = AppSearchManager.SearchContext.Builder(DATABASE).build()
+
+    private suspend fun setSchema(open: AppSearchSession): AppSearchSession {
         fun searchable(name: String, cardinality: Int) = AppSearchSchema.StringPropertyConfig.Builder(name)
             .setCardinality(cardinality)
             .setIndexingType(AppSearchSchema.StringPropertyConfig.INDEXING_TYPE_PREFIXES)
@@ -239,12 +299,21 @@ object StartSearchIndex {
         // runs on, and the callback itself.
         val result = await { done -> open.setSchema(request, direct, direct) { done(it) } }
         check(result.isSuccess) { "setSchema failed: ${result.getResultCode()} ${result.getErrorMessage()}" }
+        return open
     }
 
-    private suspend fun write(open: AppSearchSession, rows: List<SearchRow>) {
+    /**
+     * SECURITY: the only function in the app that writes a document, and it takes a [PersistedRow].
+     *
+     * A notification row cannot be passed here - there is no overload that would accept one, and
+     * `SearchPersistence.indexable` has already refused to make one from the collected rows. That
+     * is what makes "this launcher never stores notification content" true by construction rather
+     * than by review.
+     */
+    private suspend fun write(open: AppSearchSession, rows: List<PersistedRow>) {
         if (!cleared) {
-            // A notification the user dismissed must not stay findable just because the process
-            // restarted, and this process has no memory of what the last one indexed.
+            // A row the user deleted must not stay findable just because the process restarted,
+            // and this process has no memory of what the last one indexed.
             clearNamespace(open)
             cleared = true
             indexedIds = emptySet()
@@ -277,7 +346,10 @@ object StartSearchIndex {
         return try {
             val page = await { done -> results.getNextPage(direct) { done(it) } }
             if (!page.isSuccess) throw IllegalStateException("search failed: ${page.getResultCode()} ${page.getErrorMessage()}")
-            page.getResultValue().orEmpty().mapNotNull { row(it.getGenericDocument()) }
+            // SECURITY: a database written by an older build could still hold rows from a source
+            // that is no longer indexable. They are dropped here, on the way back out to the screen,
+            // so nothing unreadable is ever drawn even if a stale file survives on disk.
+            SearchPersistence.discardUnindexable(page.getResultValue().orEmpty().mapNotNull { row(it.getGenericDocument()) })
         } finally {
             runCatching { results.close() }
         }
@@ -291,7 +363,7 @@ object StartSearchIndex {
         cleared = false
     }
 
-    private fun document(row: SearchRow): GenericDocument {
+    private fun document(row: PersistedRow): GenericDocument {
         val builder = GenericDocument.Builder<GenericDocument.Builder<*>>(NAMESPACE, documentId(row.id), SCHEMA)
         builder.setPropertyString(PROPERTY_REF, row.id)
         builder.setPropertyString(PROPERTY_SOURCE, row.source)
