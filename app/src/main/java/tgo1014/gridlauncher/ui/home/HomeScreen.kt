@@ -206,6 +206,7 @@ private fun HomeScreen(
             .fillMaxSize()
             .background(if (state.tileSettings.isTransparencyEnabled) Color.Black.copy(alpha) else Color.Transparent)
             .onSizeChanged { pagerWidth = it.width }
+            // A full swipe is needed to change page, so a wobble never does.
             .pageSwipeGuard(with(LocalDensity.current) { pagerWidth.toDp() })
     ) {
         when (it) {

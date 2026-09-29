@@ -144,7 +144,7 @@ fun GridTile(
                 detail = if (tileSettings.liveTilesEnabled && isHub) withContext(Dispatchers.IO) { BuiltInTiles.detail(context, item.app.packageName) } else null
                 if (tileSettings.isTileFlipEnabled && glass.motion) page++
                 elapsed += 8_000
-                delay(maxOf(1_000, 8_000 - (offset - elapsed % 8_000) % 8_000))
+                delay((8_000 - (offset - elapsed % 8_000) % 8_000).coerceIn(2_000, 8_000))
             }
         }
     }
