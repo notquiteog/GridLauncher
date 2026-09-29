@@ -36,7 +36,13 @@ class AppsManagerImpl @Inject constructor(
     override fun openApp(app: App) {
         val intent = tgo1014.gridlauncher.live.BuiltInTiles.intent(app.packageName)
             ?: packageManager.getLaunchIntentForPackage(app.packageName)
-        if (intent != null) runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        if (intent == null) {
+            android.widget.Toast.makeText(context, "This app is unavailable", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Let Android run its own open transition: it is already a clean fade-through, and it stays
+        // consistent with every other app on the device instead of being our own house style.
+        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .onFailure { android.widget.Toast.makeText(context, "This app is unavailable", android.widget.Toast.LENGTH_SHORT).show() }
     }
 

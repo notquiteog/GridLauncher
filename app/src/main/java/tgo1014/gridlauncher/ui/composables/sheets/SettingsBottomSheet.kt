@@ -104,6 +104,18 @@ fun SettingsBottomSheet(
             SettingSwitch("Reduce motion", tileSettings.reduceMotion) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(reduceMotion = it))) }
             SettingSwitch("One-handed layout", tileSettings.oneHanded) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(oneHanded = it))) }
             SettingSwitch("Start header", tileSettings.showStartHeader) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showStartHeader = it))) }
+            Text("All apps order", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("alphabetical" to "A–Z", "frequent" to "Most used", "recent" to "Recent").forEach { (key, label) ->
+                    FilterChip(selected = tileSettings.drawerSort == key,
+                        onClick = { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(drawerSort = key))) }, label = { Text(label) })
+                }
+            }
+            Text("Most used and Recent order the drawer by the apps you actually open, counted on this device.", style = MaterialTheme.typography.bodySmall)
+            SettingSwitch("Fullscreen", tileSettings.fullscreen) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(fullscreen = it))) }
+            Text("Hides the status and navigation bars. Android brings them back with a swipe from the edge.", style = MaterialTheme.typography.bodySmall)
+            SettingSwitch("Tinted icons", tileSettings.iconTint) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(iconTint = it))) }
+            Text("Renders every app icon in one flat color, drawn by the launcher from its own cache.", style = MaterialTheme.typography.bodySmall)
             SettingSwitch("Hotseat", tileSettings.hotseat.isNotEmpty()) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(hotseat = if (it) apps.take(4).map { app -> app.packageName } else emptyList()))) }
             if (tileSettings.hotseat.isNotEmpty()) {
                 Text("The hotseat holds ${tileSettings.hotseat.size} of 4 apps at the foot of Start, outside the tile grid. Use the + on a frequent app to add it.")
@@ -121,7 +133,6 @@ fun SettingsBottomSheet(
             SettingSwitch("Show notification previews", tileSettings.showNotificationText) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showNotificationText = it))) }
             SettingSwitch("Stack notifications on wide tiles", tileSettings.stackNotifications) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(stackNotifications = it))) }
             SettingSwitch("Show tile counts", tileSettings.showTileCounts) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showTileCounts = it))) }
-            SettingSwitch("Offer web results in Ask", tileSettings.allowWebSearch) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(allowWebSearch = it))) }
             TextButton(onClick = { privacyDialog = true }) { Text("Choose apps allowed to show previews") }
             Text("Notification access enables counts. Previews stay on this device. Android may hide sensitive content.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Manage notification access") }
@@ -133,9 +144,10 @@ fun SettingsBottomSheet(
             if (messageSent) Text("Live tile added. It follows the same privacy rules as your Start tiles.", style = MaterialTheme.typography.bodySmall)
             SettingSwitch("Hide tile labels", tileSettings.isAppLabelsHidden) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(isAppLabelsHidden = it))) }
             Row {
-                TextButton(onClick = { wallpaper.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Choose wallpaper") }
-                if (tileSettings.isTransparencyEnabled) TextButton(onClick = { onSettingsEvent(SettingsEvent.OnWallpaperRemoved) }) { Text("Remove") }
+                TextButton(onClick = { wallpaper.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Choose your own wallpaper") }
+                if (tileSettings.wallpaperPath != null) TextButton(onClick = { onSettingsEvent(SettingsEvent.OnWallpaperRemoved) }) { Text("Use the system wallpaper") }
             }
+            Text("Without one of your own, Start uses Android's current wallpaper, live wallpaper included.", style = MaterialTheme.typography.bodySmall)
             HorizontalDivider()
             Text("Add to Start", style = MaterialTheme.typography.titleLarge)
             BuiltInTiles.apps.chunked(2).forEach { row -> Row(Modifier.fillMaxWidth()) {

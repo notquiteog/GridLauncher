@@ -318,7 +318,9 @@ class LauncherTest {
         val installed = runBlocking { context.appsManager.installedAppsFlow.first() }
         runBlocking { context.usage.clear(); repeat(5) { context.usage.record(installed[0].packageName) }; context.usage.record(installed[1].packageName) }
         compose.onNodeWithText("All apps").performClick()
-        compose.onNodeWithText("Frequent").assertIsDisplayed()
+        runBlocking { context.settingsRepository.updateSettings(TileSettings(drawerSort = "frequent")) }
+        compose.waitForIdle()
+        compose.onNodeWithText("Most used").assertIsDisplayed()
         assertEquals(installed[0].packageName, runBlocking { context.usage.frequent.first() }.first())
         // Only real opens are recorded; a hub tile is not an app launch.
         runBlocking { context.usage.record(BuiltInTiles.CLOCK) }
@@ -342,6 +344,24 @@ class LauncherTest {
         compose.waitForIdle()
         chosen.forEach { app -> compose.onNodeWithContentDescription("Hotseat ${app.name}").assertIsDisplayed() }
         assertEquals(1, runBlocking { context.appsManager.homeGridFlow.first().size })
+    }
+
+    @Test fun aFolderCanBeEditedFromItsTileSheet() {
+        seed(listOf(
+            GridItem(1, App("Tools", BuiltInTiles.FOLDER), 2, children = listOf(App("Clock", BuiltInTiles.CLOCK))),
+            GridItem(2, App("Battery", BuiltInTiles.BATTERY), 1, x = 2)
+        ))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").performClick()
+        compose.onNodeWithContentDescription("Tools").performClick()
+        compose.onNodeWithText("Add or remove apps").performClick()
+        compose.onNodeWithText("Battery").performClick()
+        compose.waitUntil(5000) {
+            runBlocking { compose.activity.appsManager.homeGridFlow.first().first { it.app.name == "Tools" } }
+                .children.any { it.packageName == "com.android.settings" || it.packageName == BuiltInTiles.BATTERY }
+        }
+        val folder = runBlocking { compose.activity.appsManager.homeGridFlow.first() }.first { it.app.name == "Tools" }
+        assertTrue(folder.children.size == 2)
     }
 
     @Test fun customLayoutsCanBeCreatedRenamedAndDeleted() {
@@ -454,14 +474,4 @@ class LauncherTest {
         assertNull(tgo1014.gridlauncher.live.ThemePacks.decode("not a pack"))
     }
 
-    @Test fun askStartAnswersFromLocalDataAndOffersVoice() {
-        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
-        compose.onNodeWithText("All apps").performClick()
-        compose.onNodeWithText("Ask").performClick()
-        compose.onNodeWithText("Ask Start").assertIsDisplayed()
-        compose.onNodeWithText("What's on today?").performTextInput("what time is it")
-        compose.waitForIdle()
-        compose.onNodeWithText("Answer").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Ask by voice").assertIsDisplayed()
-    }
 }

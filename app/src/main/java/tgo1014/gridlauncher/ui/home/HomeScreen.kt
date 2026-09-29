@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import tgo1014.gridlauncher.ui.theme.pageSwipeGuard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.util.lerp
@@ -64,6 +66,16 @@ fun HomeScreen(
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
         activity?.enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
+    // Fullscreen hides the system bars; Android brings them back with a swipe from the edge.
+    LaunchedEffect(state.tileSettings.fullscreen) {
+        val window = activity?.window ?: return@LaunchedEffect
+        val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        if (state.tileSettings.fullscreen) {
+            controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    }
     HomeScreen(
         state = state,
         onAppClicked = viewModel::onOpenApp,
@@ -84,9 +96,8 @@ fun HomeScreen(
         onRenameLayout = viewModel::renameLayout,
         onDeleteLayout = viewModel::deleteLayout,
         onHandoffFocusHandled = viewModel::onHandoffFocusHandled,
-        onSearch = viewModel::onSearch,
-        onPinToHotseat = viewModel::pinToHotseat,
-        onAskHandled = viewModel::onAskHandled,
+        onPinToHotseat = { viewModel.pinToHotseat(it) },
+        onFolderChanged = viewModel::onFolderChanged,
         frequent = frequent,
         onEditLayout = viewModel::setEditingLayout
     )
@@ -113,9 +124,8 @@ private fun HomeScreen(
     onRenameLayout: (String, String) -> Unit = { _, _ -> },
     onDeleteLayout: (String) -> Unit = {},
     onHandoffFocusHandled: () -> Unit = {},
-    onSearch: () -> Unit = {},
     onPinToHotseat: (String) -> Unit = {},
-    onAskHandled: () -> Unit = {},
+    onFolderChanged: (GridItem) -> Unit = {},
     frequent: List<String> = emptyList(),
     onEditLayout: (Boolean) -> Unit = {},
 ) {
@@ -162,6 +172,7 @@ private fun HomeScreen(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
+                    .wallpaperParallax()
                     .haze(state = hazeState)
             )
         }
@@ -170,17 +181,17 @@ private fun HomeScreen(
         GridScreenScreen(state = state, hazeState = hazeState, onItemClicked = onItemClicked,
             onItemDropped = onItemDropped, onItemLongClicked = onItemLongClicked, onTileEvent = onTileEvent,
             onEditLayout = onEditLayout, showAllAppsLink = showFooter, onHandoffFocusHandled = onHandoffFocusHandled,
-            onOpenApp = onAppClicked, onSearch = onSearch,
+            onOpenApp = onAppClicked, onFolderChanged = onFolderChanged,
             onFooterClicked = { scope.launch { pagerState.animateScrollToPage(1) } })
     }
     val allApps: @Composable () -> Unit = {
-        AppListScreen(state = state, hazeState = hazeState, frequent = frequent, onAppClicked = onAppClicked, onAddToGrid = onAddToGrid, onPinToHotseat = onPinToHotseat, onSearch = onSearch,
+        AppListScreen(state = state, hazeState = hazeState, onAppClicked = onAppClicked, onAddToGrid = onAddToGrid, onPinToHotseat = onPinToHotseat,
             onFilterTextChanged = onFilterTextChanged, onFilterClearPressed = onFilterClearPressed,
             onUninstall = onUninstall, onSettingsEvent = onSettingsEvent,
             onEditLayout = { editing -> onEditLayout(editing); scope.launch { pagerState.animateScrollToPage(0) } },
             onProfile = { name -> onProfile(name); scope.launch { pagerState.animateScrollToPage(0) } },
             onCreateLayout = { name, copy -> onCreateLayout(name, copy); scope.launch { pagerState.animateScrollToPage(0) } },
-            onRenameLayout = onRenameLayout, onDeleteLayout = onDeleteLayout, onAskHandled = onAskHandled,
+            onRenameLayout = onRenameLayout, onDeleteLayout = onDeleteLayout,
             onBackPressed = { scope.launch { pagerState.animateScrollToPage(0) } })
     }
     if (continuum) {
@@ -192,14 +203,12 @@ private fun HomeScreen(
     } else {
     HorizontalPager(
         state = pagerState,
-        flingBehavior = PagerDefaults.flingBehavior(
-            state = pagerState,
-            pagerSnapDistance = PagerSnapDistance.atMost(2)
-        ),
+        flingBehavior = PagerDefaults.flingBehavior(state = pagerState, pagerSnapDistance = PagerSnapDistance.atMost(2)),
         modifier = Modifier
             .fillMaxSize()
             .background(if (state.tileSettings.isTransparencyEnabled) Color.Black.copy(alpha) else Color.Transparent)
             .onSizeChanged { pagerWidth = it.width }
+            .pageSwipeGuard(with(LocalDensity.current) { pagerWidth.toDp() })
     ) {
         when (it) {
             0 -> start(true)

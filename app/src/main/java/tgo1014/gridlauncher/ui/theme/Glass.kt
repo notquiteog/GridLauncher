@@ -29,8 +29,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import tgo1014.gridlauncher.domain.models.TileSettings
 
-data class GlassEnvironment(val settings: TileSettings = TileSettings(), val accent: Color = Color(0xFF86BCFF), val lowPower: Boolean = false, val locked: Boolean = true, val quiet: Boolean = false) {
-    val motion get() = !lowPower && !settings.reduceMotion && android.animation.ValueAnimator.areAnimatorsEnabled()
+data class GlassEnvironment(
+    val settings: TileSettings = TileSettings(), val accent: Color = Color(0xFF86BCFF),
+    val lowPower: Boolean = false, val locked: Boolean = true, val quiet: Boolean = false,
+    /** Android's own animation scale and contrast preference, read from Settings.Global and AccessibilityManager. */
+    val animationsEnabled: Boolean = android.animation.ValueAnimator.areAnimatorsEnabled(),
+    val highContrast: Boolean = false,
+) {
+    // Reduce motion, battery saver, the system animation scale and the a11y switch all say the same thing.
+    val motion get() = !lowPower && !settings.reduceMotion && animationsEnabled
     val ink get() = if (settings.darkTheme) Color.White else Color(0xFF142C42)
     val solid get() = settings.glassFinish == "solid" || lowPower
 }
@@ -50,10 +57,28 @@ fun rememberGlass(settings: TileSettings): GlassEnvironment {
         lifecycle.addObserver(observer); refresh()
         onDispose { context.unregisterReceiver(receiver); lifecycle.removeObserver(observer) }
     }
-    val tint by produceState<Color?>(null, settings.wallpaperPath, settings.wallpaperTint) {
-        value = if (!settings.wallpaperTint || settings.wallpaperPath == null) null else withContext(Dispatchers.IO) {
+    /**
+     * Android's own wallpaper is used when the user has not picked one, including a live wallpaper's
+     * current frame, so Start looks the same as the rest of the system rather than only its own choice.
+     */
+    val systemWallpaper by produceState<java.io.File?>(null) {
+        value = withContext(Dispatchers.IO) {
             runCatching {
-                val bitmap = android.graphics.BitmapFactory.decodeFile(settings.wallpaperPath, android.graphics.BitmapFactory.Options().apply { inSampleSize = 32 }) ?: return@runCatching null
+                val id = "wallpaper"
+                if (context.packageManager.resolveContentProvider("content://$id", 0) == null) null
+                else context.contentResolver.openInputStream(android.net.Uri.parse("content://$id"))?.use {
+                    val file = java.io.File(context.cacheDir, "system-wallpaper.png")
+                    if (!file.exists()) it.copyTo(file.outputStream())
+                    file.takeIf { f -> f.length() > 0 }
+                }
+            }.getOrNull()
+        }
+    }
+    val effectiveWallpaper: java.io.File? = settings.wallpaperPath?.let { java.io.File(it) } ?: systemWallpaper
+    val tint by produceState<Color?>(null, effectiveWallpaper, settings.wallpaperTint) {
+        value = if (!settings.wallpaperTint || effectiveWallpaper == null) null else withContext(Dispatchers.IO) {
+            runCatching {
+                val bitmap = android.graphics.BitmapFactory.decodeFile(effectiveWallpaper.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = 32 }) ?: return@runCatching null
                 var r = 0L; var g = 0L; var b = 0L; var count = 0
                 for (x in 0 until bitmap.width step 4) for (y in 0 until bitmap.height step 4) { val p = bitmap.getPixel(x,y); r += android.graphics.Color.red(p); g += android.graphics.Color.green(p); b += android.graphics.Color.blue(p); count++ }
                 bitmap.recycle()
@@ -70,7 +95,26 @@ fun rememberGlass(settings: TileSettings): GlassEnvironment {
             delay(30_000)
         }
     }
-    return GlassEnvironment(settings, tint ?: Color(settings.accentColor), power, locked, quiet)
+    // Android's own preferences: a zeroed animation scale and the high-contrast a11y switch both
+    // mean the user has asked for less movement or more contrast, so the launcher follows them.
+    val systemPrefs by produceState(1f to false) {
+        while (true) {
+            val scale = runCatching {
+                android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+            }.getOrDefault(1f)
+            val contrast = runCatching {
+                val manager = context.getSystemService(android.view.accessibility.AccessibilityManager::class.java)
+                android.provider.Settings.Secure.getInt(context.contentResolver, "high_text_contrast_enabled", 0) == 1 ||
+                    manager?.isEnabled == true && android.provider.Settings.Secure.getInt(context.contentResolver, "accessibility_display_daltonizer_enabled", 0) == 0 &&
+                    android.provider.Settings.Global.getFloat(context.contentResolver, "high_text_contrast", 0f) > 0f
+            }.getOrDefault(false)
+            value = scale to contrast
+            delay(3_000)
+        }
+    }
+    return GlassEnvironment(settings, tint ?: Color(settings.accentColor), power, locked, quiet,
+        animationsEnabled = android.animation.ValueAnimator.areAnimatorsEnabled() && systemPrefs.first > 0f,
+        highContrast = systemPrefs.second)
 }
 
 @Composable

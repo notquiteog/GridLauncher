@@ -27,14 +27,19 @@ Maintenance work (column changes, whole-cell migration, pruning uninstalled apps
 ## Start and editing
 
 - A **hotseat** holds up to four apps at the foot of Start, with a search pill and a way into Customize Start. It sits outside the tile grid, so packing, pinning and the tile width never move it.
-- A **Frequent** row above the alphabetical list offers the apps you actually open, counted locally by `UsageTracker`. Only package names are stored, never timestamps, and a hub tile is not counted as an app launch.
+- The drawer can be ordered **A–Z**, by **Most used** or by **Recent**, counting real opens locally with `UsageTracker`. Only package names are stored, never timestamps, and a hub tile is not counted as an app launch. The same counts drive the **Frequent** row above the list.
+- **Tinted icons** renders every app icon in one flat color, drawn by the launcher from its own cache rather than by a system service. **Icon normalization** scales back the icons that apps draw small inside a large canvas, so the grid reads at one consistent size without any artwork being redrawn.
+- **Fullscreen** hides the status and navigation bars; Android brings them back with a swipe from the edge.
+- Paging between Start and All apps needs a real swipe: a small horizontal wobble is swallowed, so the screen only changes when you mean it.
+- Swipe **up from the bottom edge** of Start to open the drawer, the way the stock launchers do, with a hint as you go.
 - Home holds tiles and widgets only. A semi-panoramic header carries the date, large at the top of the grid and shrinking and fading as you scroll. A **Quiet** marker appears while quiet hours or meeting mode are on. The date, **Ask**, Edit layout, settings, the layout chips and the Now area live in All apps. Choosing Edit layout or another layout returns to Home; Android Back exits editing.
 - Square, edge-to-edge flat tiles with no gaps, gradients, blur or borders. Each app tile uses the dominant opaque outer-edge color of its default icon; transparent margins are ignored. Labels switch between black and white for contrast. Built-in tiles use the accent color; photo/widget content retains its own appearance. **Tile color** in Edit tile overrides the icon's own color, with **Auto** to go back. Choose **2–6 cells across**, default **3**. All positions and sizes use whole cells; existing 2.0 layouts migrate automatically.
 - Large, unmodified Android app icons, including their original adaptive backgrounds. No replacement icon packs or foreground-only recoloring.
 - **Long press** an app tile for its Android-published dynamic/manifest shortcuts and app info. These are actual app actions, not a layout-edit gesture. Apps decide which actions they provide.
 - Open **All apps → Edit layout**. **Drag a tile** to move it: it lifts, casts a shadow and lands on the cell you release it over, snapping to whole cells. Arrow keys, Tab, Enter and the directional buttons in Edit tile work too. Tap a tile to resize, remove, recolour or **Pin position**. A pinned tile refuses to move and stays fixed as anchors when other tiles are added or removed; narrowing the grid refuses to displace a pinned tile that would no longer fit.
 - Tile/widget dimensions include **1×1, 1×2, 2×1, 2×2**, and larger whole-cell rectangles that fit the selected width. An Android widget's own content may need a larger size to be useful.
-- **Group headers** span the full width of the grid to divide sections, and keep their position through every reflow. **Folders** can hold other folders; open one, then open the inner one to drill down, and **Up** steps back out.
+- **Group headers** span the full width of the grid to divide sections, and keep their position through every reflow. **Folders** can hold other folders; open one, then open the inner one to drill down, and **Up** steps back out. A folder's contents are editable from its own tile sheet, and dragging a tile onto a folder puts that app inside it.
+- **Resize widget** hands a bound widget to Android's own resize flow.
 - **Now Playing** reads the system's real media session: album art, title, artist and transport, updating as playback changes.
 - **Frosted, Clear, Acrylic and Solid** materials for surrounding controls, wallpaper-derived tint, accent colors, light/dark themes, optional labels, and one-handed spacing. Acrylic is the sharpest, Frosted the softest. Dark app-list text is explicitly white.
 - On a large screen or desktop window (840dp and wider) Start and All apps sit side by side, the Continuum gesture expressed through real windowing instead of a hardware category. Touch layouts keep the single-column Start/All apps pager.
@@ -47,16 +52,10 @@ Enable **Manage notification access** for counts and live text. Notification tex
 - **Wide tiles stack** what else is waiting underneath the newest item, in the style of the Android 17 notification stack, instead of hiding it behind a count.
 - **Now** in All apps surfaces ongoing media, progress, navigation and timer notifications without rearranging pinned tiles. Finished/dismissed notifications disappear. Android 17 semantic annotations supply caution/urgent/safe labels and colors when the source app provides them.
 - Folder tiles aggregate counts and expand inline into live app tiles.
-- Clock, **Music**, **Photos**, People, **Battery** and **Storage** built-ins. Calendar and favourites use optional read permissions; denial does not prevent using the launcher. Battery reports charge, charge cycles, time to full and temperature. Storage reports used and free space from `StatFs`.
+- Clock, **Music**, **Photos**, People, **Battery**, **Storage**, **Steps** and **Wallet** built-ins. Steps and heart rate come from the device's own sensors through `SensorManager`, the way the Windows Phone Steps app did; the tile says so plainly when the hardware is absent. Wallet hands off to the wallet Android is already running — Android 17 gives third-party apps the wallet *provider* API but no way to read the active card, so the tile does not invent one. Calendar and favourites use optional read permissions; denial does not prevent using the launcher. Battery reports charge, charge cycles, time to full and temperature. Storage reports used and free space from `StatFs`.
 - **The Photos hub** rotates your own recent library, or the photos you picked, and honours both a full media grant and Android 14's "selected photos" grant. **The People hub** folds every visible conversation onto the people you chose, newest first, with call, message and email, and a long-press drag that drops a number or address straight into any other app. Conversation matching uses app-supplied person URIs, so an app that does not identify its sender has no row.
 - **Choose people** uses Android 17's contact picker (a phone picker fallback on older Android). Only selected names, numbers and emails are stored locally. Pin one person or a group. Contact pictures appear for favourite contacts when contact access is granted; otherwise tiles show initials.
 - Pin app destinations from **All apps → long press → Pin: shortcut**, or accept an app's Android pin request. Websites, geo links and documents can also be pinned in Customize Start.
-
-## Ask Start
-
-**Ask** in the All apps header opens Cortana's role, rebuilt from what a launcher can honestly know. A small, deterministic intent matcher answers questions about your calendar, your notifications, battery, storage, what is playing, the time, and call/message/email actions for a named contact. The same query also returns ranked results across apps, your Start tiles, people, notifications, about two dozen curated Android settings screens, and a DuckDuckGo web search as a last resort. **Voice** hands the question to the system recognizer.
-
-No model is involved, nothing leaves the device, and the same question always produces the same answer. Every answer points at a real item. Turn web results off in Customize Start if you would rather never leave the device.
 
 ## The live-tile widget
 
@@ -65,6 +64,12 @@ No model is involved, nothing leaves the device, and the same question always pr
 ## Quiet hours and meeting mode
 
 **Meeting mode** silences Start immediately: no counts, no live text, no inline actions, no Now board, and a **Quiet** marker. **Quiet hours** does the same on a schedule, including overnight windows. Granting Android's Do Not Disturb access additionally silences notifications system-wide; without it Start still keeps its own schedule, and Android's own settings remain the user's to control.
+
+## Wallpaper, motion and contrast
+
+Start uses **Android's own wallpaper** when you have not chosen one, live wallpaper included, so it looks like part of the system rather than a separate app. Choosing your own wallpaper is optional, and the grid scrolls slightly faster than the wallpaper behind it for a little depth. Motion follows your own **Reduce motion** switch *and* Android's animation scale; label contrast follows Android's **high text contrast** setting, pushing to whichever extreme actually reads.
+
+Opening an app uses Android's own open transition, which is already a clean fade-through, and Start fades back in when the app closes. That keeps the launcher consistent with every other app on the device instead of inventing its own motion language.
 
 ## Materials, theme packs and keyboard
 

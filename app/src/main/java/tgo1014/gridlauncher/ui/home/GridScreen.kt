@@ -11,6 +11,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.type
@@ -41,11 +49,16 @@ fun GridScreenScreen(
     onItemLongClicked: (GridItem) -> Unit = {}, onFooterClicked: () -> Unit = {},
     onTileEvent: (TileEvent) -> Unit = {}, onEditLayout: (Boolean) -> Unit = {},
     onSettingsEvent: (SettingsEvent) -> Unit = {}, showAllAppsLink: Boolean = true,
-    onOpenApp: (App) -> Unit = {}, onSearch: () -> Unit = {},
+    onOpenApp: (App) -> Unit = {}, onFolderChanged: (GridItem) -> Unit = {},
     onHandoffFocusHandled: () -> Unit = {},
 ) {
     val glass = LocalGlass.current
+    val haptic = LocalHapticFeedback.current
     BackHandler(enabled = state.isEditingLayout && state.itemBeingEdited == null) { onEditLayout(false) }
+    // The home gesture: swipe up from the bottom edge to open the drawer, as the stock launchers do.
+    val insets = WindowInsets.navigationBars.asPaddingValues()
+    val band = 56.dp + insets.calculateBottomPadding()
+    val swipingUp = remember { mutableStateOf(false) }
     var focusedId by remember(state.profile) { mutableStateOf<Int?>(null) }
     LaunchedEffect(state.handoffFocus) { if (state.handoffFocus != null) { focusedId = state.handoffFocus; onHandoffFocusHandled() } }
     val focused = state.grid.firstOrNull { it.id == focusedId }
@@ -71,7 +84,35 @@ fun GridScreenScreen(
             else -> false
         }
     }
-    Column(Modifier.fillMaxSize().systemBarsPadding()
+    // Start fades back in after an app closes, the way the stock launchers do.
+    val fade = remember { androidx.compose.animation.core.Animatable(1f) }
+    var resumes by remember { mutableIntStateOf(0) }
+    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> kotlinx.coroutines.runBlocking { fade.snapTo(0f) }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> resumes++
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(resumes) { if (resumes > 0 && glass.motion) fade.animateTo(1f, androidx.compose.animation.core.tween(220)) }
+    Column(Modifier.fillMaxSize().systemBarsPadding().graphicsLayer { alpha = fade.value }
+        .pointerInput(state.isEditingLayout) {
+            if (state.isEditingLayout) return@pointerInput
+            val height = size.height.toFloat()
+            val start = height - band.toPx()
+            var fromBottom = false
+            var travelled = 0f
+            detectVerticalDragGestures(
+                onDragStart = { offset -> fromBottom = offset.y > start; travelled = 0f; swipingUp.value = fromBottom },
+                onVerticalDrag = { _, amount -> if (fromBottom) travelled += amount },
+                onDragEnd = { if (fromBottom && travelled > 90f) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onFooterClicked() }; fromBottom = false; swipingUp.value = false },
+                onDragCancel = { fromBottom = false; swipingUp.value = false })
+        }
         .focusRequester(focusRequester).focusable().onPreviewKeyEvent(::handleKey)) {
         Box(Modifier.fillMaxWidth().animateContentSize(if (glass.motion) spring(dampingRatio = .9f, stiffness = 350f) else snap())) {
             if (state.tileSettings.oneHanded) Spacer(Modifier.height(100.dp))
@@ -84,11 +125,12 @@ fun GridScreenScreen(
             contentPadding = if (state.itemBeingEdited == null) PaddingValues(0.dp) else PaddingValues(bottom = 200.dp),
             modifier = Modifier.fillMaxWidth().weight(1f))
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-            Hotseat(state.appList, state.tileSettings.hotseat, onOpenApp, onSearch)
+            Hotseat(state.appList, state.tileSettings.hotseat, onOpenApp)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (QuietHours.active(state.tileSettings)) {
                     Text("Quiet", color = glass.accent, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
                 }
+                if (swipingUp.value) Text("Release for All apps", color = glass.accent, fontSize = 13.sp, modifier = Modifier.padding(start = 8.dp))
                 if (showAllAppsLink) TextButton(onClick = onFooterClicked, modifier = Modifier.weight(1f)) {
                     Text("All apps", color = glass.ink, fontSize = 14.sp)
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = glass.ink, modifier = Modifier.size(18.dp))
@@ -97,5 +139,6 @@ fun GridScreenScreen(
         }
     }
     TileSettingsBottomSheet(isShowing = state.isEditingLayout && state.itemBeingEdited != null,
-        item = state.itemBeingEdited, onTileEvent = onTileEvent)
+        item = state.itemBeingEdited, onTileEvent = onTileEvent,
+        folderApps = state.appList, onFolderChanged = onFolderChanged)
 }

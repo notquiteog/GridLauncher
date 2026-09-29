@@ -20,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import tgo1014.gridlauncher.R
 import tgo1014.gridlauncher.domain.AppsManager
 import tgo1014.gridlauncher.domain.GridPlacement
 import tgo1014.gridlauncher.domain.models.App
@@ -108,6 +109,10 @@ class MainActivity : ComponentActivity() {
     private val homeViewModel: HomeScreenViewModel by viewModels()
     val widgetHost by lazy { AppWidgetHost(this, 1701) }
     private var pendingWidget = -1
+    private var returningFromApp = false
+
+    /** Lets Start fade itself back in the next time this activity resumes. */
+    fun onAppLaunched() { returningFromApp = true }
     private val packageUpdates = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) { lifecycleScope.launch { updateAppListUseCase() } }
     }
@@ -181,10 +186,13 @@ class MainActivity : ComponentActivity() {
         }
         androidx.core.content.ContextCompat.registerReceiver(this, packageUpdates, filter, androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
     }
-    override fun onStop() { unregisterReceiver(packageUpdates); widgetHost.stopListening(); super.onStop() }
+    override fun onStop() { unregisterReceiver(packageUpdates); widgetHost.stopListening(); tgo1014.gridlauncher.live.SensorTiles.stop(this); super.onStop() }
     override fun onResume() {
-        super.onResume(); updater.check()
+        super.onResume()
+        if (returningFromApp) returningFromApp = false
+        updater.check()
         tgo1014.gridlauncher.live.MediaTiles.refresh(this)
+        tgo1014.gridlauncher.live.SensorTiles.start(this)
         lifecycleScope.launch { updateAppListUseCase() }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveHandoff(intent); receivePinRequest(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
@@ -218,6 +226,10 @@ class MainActivity : ComponentActivity() {
         val name = intent?.getStringExtra("grid.profile")?.takeIf { it.isNotBlank() } ?: return
         homeViewModel.adoptHandoffLayout(name, intent.getIntExtra("grid.focus", -1).takeIf { it >= 0 })
     }
+
+    private fun animationsReduced() = runCatching {
+        android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }.getOrDefault(false) || !android.animation.ValueAnimator.areAnimatorsEnabled()
 
     fun chooseDefaultLauncher() {
         val roles = getSystemService(RoleManager::class.java)

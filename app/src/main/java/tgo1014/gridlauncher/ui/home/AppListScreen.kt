@@ -55,7 +55,19 @@ fun AppListScreen(
     val scope = rememberCoroutineScope()
     var alphabet by remember { mutableStateOf(false) }
 
-    val groups = remember(state.appList) { state.appList.sortedBy { it.name.lowercase() }.groupBy { it.nameFirstLetter.uppercase() } }
+    // The drawer sorts over real usage counts, not a guess: most used or most recent first.
+    val ordered = remember(state.appList, state.tileSettings.drawerSort, frequent) {
+        when (state.tileSettings.drawerSort) {
+            "frequent" -> state.appList.sortedWith(compareByDescending<App> { app -> frequent.indexOf(app.packageName).let { if (it < 0) Int.MAX_VALUE else it } }
+                .thenBy { it.name.lowercase() })
+            "recent" -> state.appList.sortedByDescending { app -> frequent.indexOf(app.packageName).let { if (it < 0) -1 else -it } }
+            else -> state.appList.sortedBy { it.name.lowercase() }
+        }
+    }
+    val grouped = remember(ordered, state.tileSettings.drawerSort) {
+        if (state.tileSettings.drawerSort == "alphabetical") ordered.groupBy { it.nameFirstLetter.uppercase() }
+        else mapOf<String, List<App>>((if (state.tileSettings.drawerSort == "recent") "Recent" else "Most used") to ordered)
+    }
     val ink = if (state.tileSettings.darkTheme) Color.White else Color(0xFF142C42)
     // Translucent when a wallpaper is set, so the glass controls still have something to sample.
     val background = if (state.tileSettings.isTransparencyEnabled) Color.Transparent else if (state.tileSettings.darkTheme) Color(0xFF101E30) else Color(0xFFEDF4FA)
@@ -65,14 +77,11 @@ fun AppListScreen(
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(java.util.Locale.getDefault(), "EEEMMMd"), java.util.Locale.getDefault()).format(java.util.Date()),
                 color = ink, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            TextButton(onClick = onSearch) { Text("Ask", color = ink) }
             TextButton(onClick = { onEditLayout(!state.isEditingLayout) }) { Text(if (state.isEditingLayout) "Done" else "Edit layout", color = ink) }
             IconButton(onClick = { onSettingsEvent(SettingsEvent.OnSettingsIconClicked) }) { Icon(Icons.Default.Settings, "Customize Start", tint = ink) }
         }
-        if (state.isAskShowing) tgo1014.gridlauncher.ui.composables.AskStart(
-            apps = state.appList, tiles = state.grid, onOpenApp = onAppClicked, onDismiss = onAskHandled)
         LayoutSelector(state, ink, onProfile, onCreateLayout, onRenameLayout, onDeleteLayout)
-        tgo1014.gridlauncher.ui.composables.FrequentRow(state.appList, frequent, onAppClicked, { onPinToHotseat(it.packageName) })
+        tgo1014.gridlauncher.ui.composables.FrequentRow(state.appList, frequent, state.tileSettings.drawerSort, onAppClicked, { onPinToHotseat(it.packageName) })
         NowArea(hazeState)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("All apps", color = ink, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
@@ -83,11 +92,11 @@ fun AppListScreen(
         OutlinedTextField(state.filterString, onFilterTextChanged, placeholder = { Text("Search apps") }, singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = ink, focusedPlaceholderColor = ink.copy(alpha = .7f), unfocusedPlaceholderColor = ink.copy(alpha = .7f)),
             trailingIcon = { if (state.filterString.isNotEmpty()) TextButton(onClick = onFilterClearPressed) { Text("Clear") } }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
-        if (groups.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
+        if (grouped.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-            groups.forEach { (letter, apps) ->
-                item(key = "letter:$letter") { Text(letter, fontSize = 30.sp, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { alphabet = true }.padding(vertical = 14.dp, horizontal = 8.dp)) }
+            grouped.forEach { (letter, apps) ->
+                item(key = "letter:$letter") { Text(letter, fontSize = if (state.tileSettings.drawerSort == "alphabetical") 30.sp else 14.sp, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { alphabet = true }.padding(vertical = if (state.tileSettings.drawerSort == "alphabetical") 14.dp else 4.dp, horizontal = 8.dp)) }
                 items(apps, key = { it.packageName }) { app ->
                     var menu by remember { mutableStateOf(false) }
                     val launcher = context.getSystemService(LauncherApps::class.java)
@@ -118,11 +127,11 @@ fun AppListScreen(
             }
         }
     }
-    if (alphabet) AlertDialog(onDismissRequest = { alphabet = false }, title = { Text("Jump to letter") }, text = {
-        Column { groups.keys.toList().chunked(5).forEach { row -> Row {
+    if (alphabet && state.tileSettings.drawerSort == "alphabetical") AlertDialog(onDismissRequest = { alphabet = false }, title = { Text("Jump to letter") }, text = {
+        Column { grouped.keys.toList().chunked(5).forEach { row -> Row {
             row.forEach { letter -> TextButton(onClick = {
                 var index = 0
-                for ((key, apps) in groups) { if (key == letter) break; index += apps.size + 1 }
+                for ((key, apps) in grouped) { if (key == letter) break; index += apps.size + 1 }
                 alphabet = false; scope.launch { listState.scrollToItem(index) }
             }, modifier = Modifier.weight(1f)) { Text(letter, fontSize = 22.sp) } }
         } } }

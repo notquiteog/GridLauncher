@@ -36,25 +36,13 @@ import tgo1014.gridlauncher.ui.theme.glassSurface
  */
 @Composable
 fun Hotseat(
-    apps: List<App>, pinned: List<String>, onOpen: (App) -> Unit, onSearch: () -> Unit,
+    apps: List<App>, pinned: List<String>, onOpen: (App) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val glass = LocalGlass.current
     val slots = 4
     val resolved = pinned.take(slots).mapNotNull { name -> apps.firstOrNull { it.packageName == name } }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier
-                .fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(26.dp))
-                .background(if (glass.solid) glass.accent.copy(alpha = .28f) else Color.White.copy(alpha = .12f))
-                .clickable(onClick = onSearch)
-                .semantics { contentDescription = "Search Start" },
-                verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Search, null, tint = glass.ink, modifier = Modifier.padding(start = 16.dp).size(20.dp))
-                Text("Search apps, people, settings", color = glass.ink.copy(alpha = .75f), fontSize = 15.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp).weight(1f))
-            }
-        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             resolved.forEach { app ->
                 Box(Modifier.size(56.dp).clip(CircleShape).clickable { onOpen(app) }
@@ -69,12 +57,14 @@ fun Hotseat(
 
 /** The apps you reach for most, offered above the alphabetical list. */
 @Composable
-fun FrequentRow(apps: List<App>, frequent: List<String>, onOpen: (App) -> Unit, onPin: (App) -> Unit, modifier: Modifier = Modifier) {
+fun FrequentRow(apps: List<App>, frequent: List<String>, sort: String, onOpen: (App) -> Unit, onPin: (App) -> Unit, modifier: Modifier = Modifier) {
     val glass = LocalGlass.current
-    val suggestions = frequent.asSequence().mapNotNull { name -> apps.firstOrNull { it.packageName == name } }.take(8).toList()
+    val suggestions = frequent.asSequence().mapNotNull { name -> apps.firstOrNull { it.packageName == name } }
+        .let { if (sort == "alphabetical") it.sortedBy { app -> app.name.lowercase() } else it }
+        .take(8).toList()
     if (suggestions.size < 2) return
     Column(modifier.fillMaxWidth()) {
-        Text("Frequent", color = glass.ink.copy(alpha = .7f), fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+        Text(if (sort == "alphabetical") "Apps" else if (sort == "recent") "Recent" else "Most used", color = glass.ink.copy(alpha = .7f), fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(suggestions, key = { it.packageName }) { app ->
                 Column(Modifier.width(72.dp).clickable { onOpen(app) }, horizontalAlignment = Alignment.CenterHorizontally) {

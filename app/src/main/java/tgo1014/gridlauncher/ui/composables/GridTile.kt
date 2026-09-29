@@ -54,6 +54,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.luminance
+import tgo1014.gridlauncher.ui.theme.readableInk
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -86,6 +87,7 @@ import tgo1014.gridlauncher.live.PhotoTiles
 import tgo1014.gridlauncher.live.NotificationTiles
 import tgo1014.gridlauncher.ui.MainActivity
 import tgo1014.gridlauncher.ui.models.GridItem
+import tgo1014.gridlauncher.ui.theme.AppIconImage
 import tgo1014.gridlauncher.ui.theme.AsyncImage
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -102,7 +104,10 @@ fun GridTile(
     // A Photos hub with no picks borrows the library itself; chosen photos always win.
     val photoSource = if (item.photoUris.isNotEmpty()) item.photoUris else recentPhotos
     // Photo content brings its own contrast, so its overlay text is always white.
-    val tileInk = if (photoSource.isNotEmpty()) Color.White else tgo1014.gridlauncher.ui.theme.readableInk(tileColor)
+    // High contrast is the user's own a11y preference, so the label pushes to the extremes.
+    val tileInk = if (photoSource.isNotEmpty()) Color.White
+    else if (glass.highContrast) (if (tileColor.luminance() > .5f) Color.Black else Color.White)
+    else tgo1014.gridlauncher.ui.theme.readableInk(tileColor)
     var showNativeActions by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
     var showPeople by remember { mutableStateOf(false) }
@@ -260,7 +265,7 @@ fun GridTile(
                 Column(Modifier.align(Alignment.Center).padding(14.dp)) {
                     (item.children.take(4) + item.childFolders.take(4 - item.children.size).map { it.app }).chunked(2).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { app -> Box {
-                            AsyncImage(app.icon.iconFile, Modifier.size(folderIconSize))
+                            AppIconImage(app.icon.iconFile, Modifier.size(folderIconSize), app.icon.fill)
                             val count = matching.count { it.packageName == app.packageName }
                             if (count > 0) Text(count.toString(), color = tileInk, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).background(glass.accent))
                         } }
@@ -278,7 +283,7 @@ fun GridTile(
                 }, color = tileInk, fontSize = if (expanded) 38.sp else 22.sp, modifier = Modifier.align(Alignment.Center))
                 else {
                     val iconSize = minOf(maxWidth * .72f, maxHeight - if (tileSettings.isAppLabelsHidden) 12.dp else 32.dp).coerceAtLeast(24.dp)
-                    AsyncImage(item.app.icon.iconFile, Modifier.align(Alignment.Center).offset(y = if (tileSettings.isAppLabelsHidden) 0.dp else (-8).dp).size(iconSize))
+                    AppIconImage(item.app.icon.iconFile, Modifier.align(Alignment.Center).offset(y = if (tileSettings.isAppLabelsHidden) 0.dp else (-8).dp).size(iconSize), item.app.icon.fill, if (tileSettings.iconTint) tileInk else null)
                 }
             }
             }
@@ -311,7 +316,7 @@ fun GridTile(
             showFolder = false
             val intent = context.packageManager.getLaunchIntentForPackage(app.packageName)
             if (intent != null) runCatching { context.startActivity(intent) }
-        }) { AsyncImage(app.icon.iconFile, Modifier.size(36.dp)); Spacer(Modifier.width(12.dp)); Text(app.name) } } } },
+        }) { AppIconImage(app.icon.iconFile, Modifier.size(36.dp), app.icon.fill); Spacer(Modifier.width(12.dp)); Text(app.name) } } } },
         confirmButton = { TextButton(onClick = { showFolder = false }) { Text("Close") } })
 }
 

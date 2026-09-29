@@ -4,12 +4,23 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.DefaultAlpha
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.abs
 import androidx.compose.ui.unit.LayoutDirection
 import coil3.compose.AsyncImagePainter
 
@@ -71,3 +82,29 @@ fun AsyncImage(
     colorFilter,
     filterQuality
 )
+
+/**
+ * Makes paging between Start and All apps deliberate: a horizontal wobble is swallowed until the
+ * finger has travelled [fraction] of the page, so the screen only changes on a real swipe.
+ */
+fun Modifier.pageSwipeGuard(pageWidth: Dp, fraction: Float = 0.35f): Modifier = composed {
+    val density = LocalDensity.current
+    val threshold = remember(pageWidth, fraction) { with(density) { pageWidth.toPx() * fraction } }
+    var travelled by remember { mutableFloatStateOf(0f) }
+    nestedScroll(object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (available.x == 0f) return Offset.Zero
+            val remaining = (threshold - abs(travelled)).coerceAtLeast(0f)
+            if (abs(available.x) <= remaining) {
+                travelled += available.x
+                return Offset(available.x, 0f)
+            }
+            travelled = 0f
+            return Offset.Zero
+        }
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            if (consumed.x == 0f && available.x == 0f) travelled = 0f
+            return Offset.Zero
+        }
+    })
+}

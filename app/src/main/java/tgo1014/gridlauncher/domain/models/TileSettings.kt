@@ -25,7 +25,10 @@ data class TileSettings(
     val showStartHeader: Boolean = true,
     /** Package names for the hotseat, in order. Lives outside the packed grid on purpose. */
     val hotseat: List<String> = emptyList(),
-    val allowWebSearch: Boolean = true,
+    /** A1Z26, most used, or recently used. */
+    val drawerSort: String = "alphabetical",
+    val iconTint: Boolean = false,
+    val fullscreen: Boolean = false,
     val hiddenPreviewApps: Set<String> = emptySet(),
     val workSchedule: Boolean = false,
     val workStartHour: Int = 9,
@@ -41,5 +44,5 @@ data class TileSettings(
         get() = wallpaperPath?.let { File(it) }
 
     val isTransparencyEnabled: Boolean
-        get() = wallpaperPath != null
+        get() = true
 }

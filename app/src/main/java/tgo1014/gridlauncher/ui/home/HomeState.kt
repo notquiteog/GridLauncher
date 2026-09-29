@@ -18,5 +18,4 @@ data class HomeState(
     val isSettingsSheetShowing: Boolean = false,
     /** Set by a handed-off layout so the receiving device can put the cursor on the same tile. */
     val handoffFocus: Int? = null,
-    val isAskShowing: Boolean = false,
 )

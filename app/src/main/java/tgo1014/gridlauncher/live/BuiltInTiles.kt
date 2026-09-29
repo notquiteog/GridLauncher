@@ -30,6 +30,8 @@ object BuiltInTiles {
     const val WIDGET = "grid://widget"
     const val MUSIC = "grid://music"
     const val STORAGE = "grid://storage"
+    const val STEPS = "grid://steps"
+    const val WALLET = "grid://wallet"
     const val CONTACTS = "grid://contacts"
     const val DESTINATION = "grid://destination"
     const val GROUP = "grid://group"
@@ -37,8 +39,9 @@ object BuiltInTiles {
     val apps = listOf(
         App("Clock", CLOCK), App("Calendar", CALENDAR), App("People", PEOPLE), App("Music", MUSIC),
         App("Photos", PHOTOS), App("Battery", BATTERY), App("Storage", STORAGE),
+        App("Steps", STEPS), App("Wallet", WALLET),
     )
-    fun isHub(id: String) = id in setOf(CLOCK, CALENDAR, PEOPLE, MUSIC, PHOTOS, BATTERY, STORAGE)
+    fun isHub(id: String) = id in setOf(CLOCK, CALENDAR, PEOPLE, MUSIC, PHOTOS, BATTERY, STORAGE, STEPS, WALLET)
 
     /** Every built-in a backup may bring back, including the ones not offered in Add to Start. */
     val restorable: Map<String, App> = (apps + App("Folder", FOLDER) + App("Group", GROUP)).associateBy { it.packageName }
@@ -51,6 +54,8 @@ object BuiltInTiles {
         MUSIC -> mediaIntent()
         PHOTOS -> Intent(Intent.ACTION_VIEW, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
         STORAGE -> Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)
+        STEPS -> Intent("android.settings.ACTIVITY_RECOGNIZATION")
+        WALLET -> Intent(android.service.quickaccesswallet.QuickAccessWalletService.ACTION_VIEW_WALLET)
         else -> null
     }
 
@@ -67,6 +72,8 @@ object BuiltInTiles {
         } ?: ("Music" to if (granted(context, Manifest.permission.ACCESS_NOTIFICATION_POLICY)) "Nothing playing" else "Tap to connect media")
         PHOTOS -> recentPhotos(context)
         STORAGE -> storage(context)
+        STEPS -> steps(context)
+        WALLET -> ("Tap to pay" to if (WalletTiles.available(context)) "Open your wallet" else "Not available on this device")
         else -> null
     }
 
@@ -101,6 +108,14 @@ object BuiltInTiles {
         val free = volume.availableBlocksLong * volume.blockSizeLong
         val used = (total - free).coerceAtLeast(0)
         return "${gigabytes(used)} used" to "${gigabytes(free)} free of ${gigabytes(total)}"
+    }
+
+    private fun steps(context: Context): Pair<String, String> {
+        if (!SensorTiles.available(context)) return "Steps" to "No step sensor"
+        val reading = SensorTiles.start(context)
+        val count = reading.steps
+        return if (count == null) "Steps" to "Waiting for a reading"
+        else "$count steps" to (reading.bpm?.let { "$it bpm" } ?: "Today")
     }
 
     private fun gigabytes(bytes: Long): String {

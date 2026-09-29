@@ -28,6 +28,7 @@ import tgo1014.gridlauncher.ui.models.GridItem
 import tgo1014.gridlauncher.ui.models.SettingsEvent
 import tgo1014.gridlauncher.ui.models.TileEvent
 import javax.inject.Inject
+import tgo1014.gridlauncher.ui.MainActivity
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -51,13 +52,8 @@ class HomeScreenViewModel @Inject constructor(
 
     private var fullAppList: List<App> = emptyList()
 
+    /** Package names by how often you open them, for the drawer's Frequent and Recent sorts. */
     val frequentApps = usage.frequent
-
-    /** Opens Ask Start from the hotseat search pill. */
-    fun onSearch() = openAsk()
-
-    private fun openAsk() { _stateFlow.update { it.copy(isAskShowing = true) } }
-    fun onAskHandled() { _stateFlow.update { it.copy(isAskShowing = false) } }
 
     fun pinToHotseat(packageName: String) = viewModelScope.launch {
         val settings = settingsRepository.tileSettingsFlow.first()
@@ -101,6 +97,13 @@ class HomeScreenViewModel @Inject constructor(
         if (runCatching { profiles.rename(current, name) }.onFailure(::toast).isFailure) return@launch
         resetState()
     }
+    /** Replaces a folder's contents from its edit sheet. */
+    fun onFolderChanged(folder: GridItem) = viewModelScope.launch {
+        val grid = appsManager.homeGridFlow.first()
+        val columns = settingsRepository.tileSettingsFlow.first().gridColumns
+        appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, folder.copy(id = folder.id), columns))
+    }
+
     fun onHandoffFocusHandled() { _stateFlow.update { it.copy(handoffFocus = null) } }
 
     fun deleteLayout(name: String) = viewModelScope.launch {
@@ -131,7 +134,7 @@ class HomeScreenViewModel @Inject constructor(
             _stateFlow.update { it.copy(goToHome = true) }
             resetState()
         }
-        viewModelScope.launch { appsManager.openApp(app) }
+        viewModelScope.launch { (context as? MainActivity)?.onAppLaunched(); appsManager.openApp(app) }
     }
 
     fun onGridItemClicked(gridItem: GridItem) = viewModelScope.launch {
@@ -149,7 +152,17 @@ class HomeScreenViewModel @Inject constructor(
     fun onTileDropped(item: GridItem, dx: Int, dy: Int) = viewModelScope.launch {
         val grid = appsManager.homeGridFlow.first()
         val current = grid.firstOrNull { it.id == item.id } ?: return@launch
-        appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, current.copy(x = current.x + dx, y = current.y + dy), settingsRepository.tileSettingsFlow.first().gridColumns))
+        val columns = settingsRepository.tileSettingsFlow.first().gridColumns
+        val landing = current.copy(x = current.x + dx, y = current.y + dy)
+        val folder = grid.firstOrNull { it.id != current.id && it.childCount > 0 && tgo1014.gridlauncher.domain.GridPlacement.overlaps(landing, it) }
+        if (folder != null) {
+            // Dropping a tile onto a folder puts the app inside it, the way Windows Phone did.
+            val updated = folder.copy(children = (folder.children + current.app).distinctBy { it.packageName })
+            appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.compact(
+                grid.map { if (it.id == folder.id) updated else if (it.id == current.id) null else it }.filterNotNull(), columns))
+        } else {
+            appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, landing, columns))
+        }
     }
 
     fun onGridItemLongClicked(gridItem: GridItem) {
