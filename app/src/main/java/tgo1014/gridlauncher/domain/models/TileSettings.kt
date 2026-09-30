@@ -38,6 +38,12 @@ data class TileSettings(
     val workSchedule: Boolean = false,
     val workStartHour: Int = 9,
     val workEndHour: Int = 17,
+    /** The two layouts the weekday schedule switches between, by name. They are names like any
+     * other, so either can be renamed or deleted, and the schedule falls back when one is missing. */
+    val workLayout: String = "Work",
+    val personalLayout: String = "Personal",
+    /** Layout names in the order the bar draws them. Empty means the order they were created in. */
+    val layoutOrder: List<String> = emptyList(),
     val handoffEnabled: Boolean = false,
     val isAppLabelsHidden: Boolean = false,
     val wallpaperPath: String? = null,

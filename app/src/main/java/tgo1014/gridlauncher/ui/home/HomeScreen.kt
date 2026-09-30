@@ -98,6 +98,7 @@ fun HomeScreen(
         onCreateLayout = viewModel::createLayout,
         onRenameLayout = viewModel::renameLayout,
         onDeleteLayout = viewModel::deleteLayout,
+        onReorderLayouts = viewModel::reorderLayouts,
         onHandoffFocusHandled = viewModel::onHandoffFocusHandled,
         onPinToHotseat = { viewModel.pinToHotseat(it) },
         onFolderChanged = viewModel::onFolderChanged,
@@ -127,6 +128,7 @@ private fun HomeScreen(
     onCreateLayout: (String, Boolean) -> Unit = { _, _ -> },
     onRenameLayout: (String, String) -> Unit = { _, _ -> },
     onDeleteLayout: (String) -> Unit = {},
+    onReorderLayouts: (List<String>) -> Unit = {},
     onHandoffFocusHandled: () -> Unit = {},
     onPinToHotseat: (String) -> Unit = {},
     onFolderChanged: (GridItem) -> Unit = {},
@@ -203,7 +205,7 @@ private fun HomeScreen(
             onEditLayout = { editing -> onEditLayout(editing); goToPage(0) },
             onProfile = { name -> onProfile(name); goToPage(0) },
             onCreateLayout = { name, copy -> onCreateLayout(name, copy); goToPage(0) },
-            onRenameLayout = onRenameLayout, onDeleteLayout = onDeleteLayout,
+            onRenameLayout = onRenameLayout, onDeleteLayout = onDeleteLayout, onReorderLayouts = onReorderLayouts,
             onSearchRowClicked = onSearchRowClicked,
             onBackPressed = { goToPage(0) })
     }

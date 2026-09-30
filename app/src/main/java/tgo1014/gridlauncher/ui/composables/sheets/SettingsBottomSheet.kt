@@ -189,18 +189,32 @@ fun SettingsBottomSheet(
             Text("Calendar and People ask for access when first opened. Use an Android weather or music widget for updates from your preferred provider.", style = MaterialTheme.typography.bodySmall)
             HorizontalDivider()
             Text("Layouts", style = MaterialTheme.typography.titleLarge)
-            Text("Current: $currentProfile. Every layout keeps its own tiles, and you can create, rename or delete your own.")
+            Text("Current: $currentProfile. Every layout keeps its own tiles, and you can create, rename or delete any of them.")
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 layouts.filter { it != currentProfile }.forEach { name -> TextButton(onClick = { copyTarget = name }) { Text("Copy to $name") } }
             }
             SettingSwitch("Weekday Work schedule", tileSettings.workSchedule) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(workSchedule = it))) }
             if (tileSettings.workSchedule) {
-                Text("Work: ${tileSettings.workStartHour}:00–${tileSettings.workEndHour}:00 · local time")
+                Text("${tileSettings.workLayout}: ${tileSettings.workStartHour}:00–${tileSettings.workEndHour}:00 · local time")
                 Text("Start hour")
                 HourOrStepSlider(tileSettings.workStartHour.toFloat(), 0f..23f, 22, "Start hour") { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(workStartHour = it))) }
                 Text("End hour")
                 HourOrStepSlider(tileSettings.workEndHour.toFloat(), 0f..23f, 22, "End hour") { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(workEndHour = it))) }
-                Text("Outside work hours: Personal. Choosing a layout manually turns the schedule off.", style = MaterialTheme.typography.bodySmall)
+                Text("Weekday layout")
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    layouts.forEach { name -> FilterChip(selected = tileSettings.workLayout == name,
+                        onClick = { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(workLayout = name))) }, label = { Text(name) }) }
+                }
+                Text("Other times")
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    layouts.forEach { name -> FilterChip(selected = tileSettings.personalLayout == name,
+                        onClick = { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(personalLayout = name))) }, label = { Text(name) }) }
+                }
+                // A layout the schedule named can be renamed or deleted like any other, and saying so
+                // here beats a schedule that silently never switches again.
+                val missing = listOf(tileSettings.workLayout, tileSettings.personalLayout).filterNot { it in layouts }
+                if (missing.isNotEmpty()) Text("${missing.joinToString(" and ")} is gone, so the schedule stays on ${tgo1014.gridlauncher.data.resolveScheduledLayout(tgo1014.gridlauncher.data.defaultProfileName, layouts)}.", style = MaterialTheme.typography.bodySmall)
+                Text("Outside work hours: ${tileSettings.personalLayout}. Choosing a layout manually turns the schedule off.", style = MaterialTheme.typography.bodySmall)
             }
             SettingSwitch("Continue Start on another device", tileSettings.handoffEnabled) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(handoffEnabled = it))) }
             Text("Android Handoff shares the selected layout name and the tile you were on with your other compatible devices running GridLauncher. Each device keeps its own tiles. Nearby app suggestions depend on the system launcher.", style = MaterialTheme.typography.bodySmall)

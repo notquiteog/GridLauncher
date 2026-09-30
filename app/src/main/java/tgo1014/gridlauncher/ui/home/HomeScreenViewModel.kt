@@ -64,7 +64,7 @@ class HomeScreenViewModel @Inject constructor(
 
     private val _stateFlow = MutableStateFlow(HomeState())
     val stateFlow = combine(_stateFlow, settingsRepository.tileSettingsFlow, profiles.active, profiles.layouts) { state, settings, profile, layouts ->
-        state.copy(tileSettings = settings, profile = profile, layouts = layouts)
+        state.copy(tileSettings = settings, profile = profile, layouts = tgo1014.gridlauncher.data.orderLayouts(layouts, settings.layoutOrder))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 
     init {
@@ -73,8 +73,12 @@ class HomeScreenViewModel @Inject constructor(
             while (true) {
                 val settings = settingsRepository.tileSettingsFlow.first()
                 if (settings.workSchedule) {
-                    val due = tgo1014.gridlauncher.data.scheduledProfile(java.time.LocalDateTime.now(), settings.workStartHour, settings.workEndHour)
-                    if (due != profiles.active.first()) profiles.select(due)
+                    val due = tgo1014.gridlauncher.data.scheduledProfile(java.time.LocalDateTime.now(), settings.workStartHour, settings.workEndHour,
+                        settings.workLayout, settings.personalLayout)
+                    // The schedule names layouts, and a name it names can since have been renamed or
+                    // deleted, so what it lands on is resolved against the layouts that are really there.
+                    val target = tgo1014.gridlauncher.data.resolveScheduledLayout(due, profiles.layouts.first())
+                    if (target != profiles.active.first()) profiles.select(target)
                 }
                 delay(60_000)
             }
@@ -96,12 +100,33 @@ class HomeScreenViewModel @Inject constructor(
     }
     fun renameLayout(current: String, name: String) = viewModelScope.launch {
         if (runCatching { profiles.rename(current, name) }.onFailure(::toast).isFailure) return@launch
+        // The schedule and the bar's order both name layouts, so a rename has to reach them too.
+        val settings = settingsRepository.tileSettingsFlow.first()
+        val renamed = tgo1014.gridlauncher.data.renameLayoutRefs(settings, current, name)
+        if (renamed != settings) {
+            settingsRepository.updateSettings(renamed)
+            if (settings.workSchedule) say("The weekday schedule now uses $name")
+        }
         resetState()
     }
     fun onHandoffFocusHandled() { _stateFlow.update { it.copy(handoffFocus = null) } }
 
     fun deleteLayout(name: String) = viewModelScope.launch {
-        if (runCatching { profiles.delete(name) }.onFailure(::toast).isFailure) return@launch
+        val layouts = profiles.layouts.first()
+        // A layout is never pulled out from under the one being shown, so the launcher moves off it
+        // first. The confirmation says which layout that will be before the tap, not after.
+        val fallback = tgo1014.gridlauncher.data.resolveScheduledLayout(tgo1014.gridlauncher.data.defaultProfileName, layouts.filterNot { it == name })
+        val deleted = runCatching {
+            if (profiles.active.first() == name) profiles.select(fallback)
+            profiles.delete(name)
+        }.onFailure(::toast).isSuccess
+        if (!deleted) return@launch
+        val settings = settingsRepository.tileSettingsFlow.first()
+        val dropped = tgo1014.gridlauncher.data.dropLayoutRefs(settings, name, fallback)
+        if (dropped != settings) {
+            settingsRepository.updateSettings(dropped)
+            if (settings.workSchedule) say("The weekday schedule now uses $fallback")
+        }
         resetState()
     }
     /** Replaces a folder's contents from its edit sheet. */
@@ -110,7 +135,15 @@ class HomeScreenViewModel @Inject constructor(
         val columns = settingsRepository.tileSettingsFlow.first().gridColumns
         appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, folder, columns))
     }
-    private fun toast(cause: Throwable) = android.widget.Toast.makeText(context, cause.message ?: "Cannot change layouts", android.widget.Toast.LENGTH_LONG).show()
+    private fun toast(cause: Throwable) = say(cause.message ?: "Cannot change layouts")
+    private fun say(message: String) = android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+
+    /** Saves the order the layout bar was dragged into. Names, not indexes, so it survives a rename. */
+    fun reorderLayouts(order: List<String>) = viewModelScope.launch {
+        val settings = settingsRepository.tileSettingsFlow.first()
+        if (settings.layoutOrder == order) return@launch
+        settingsRepository.updateSettings(settings.copy(layoutOrder = order))
+    }
 
     /** A handed-off layout name is only honoured when this device still has it. */
     fun adoptHandoffLayout(name: String, focus: Int? = null) = viewModelScope.launch {

@@ -9,14 +9,22 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -24,17 +32,28 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
 import tgo1014.gridlauncher.ui.models.SettingsEvent
 import tgo1014.gridlauncher.data.builtinProfileNames
+import tgo1014.gridlauncher.data.defaultProfileName
+import tgo1014.gridlauncher.data.resolveScheduledLayout
 import tgo1014.gridlauncher.ui.theme.LocalGlass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import tgo1014.gridlauncher.domain.models.App
 import tgo1014.gridlauncher.live.SearchRow
 import tgo1014.gridlauncher.live.SearchSource
@@ -51,7 +70,8 @@ fun AppListScreen(
     onSettingsEvent: (SettingsEvent) -> Unit = {}, onProfile: (String) -> Unit = {}, onEditLayout: (Boolean) -> Unit = {},
     onFilterClearPressed: () -> Unit = {}, onUninstall: (App) -> Unit = {}, onBackPressed: () -> Unit = {},
     onCreateLayout: (String, Boolean) -> Unit = { _, _ -> }, onRenameLayout: (String, String) -> Unit = { _, _ -> },
-    onDeleteLayout: (String) -> Unit = {}, frequent: List<String> = emptyList(),
+    onDeleteLayout: (String) -> Unit = {}, onReorderLayouts: (List<String>) -> Unit = {},
+    frequent: List<String> = emptyList(),
     onPinToHotseat: (String) -> Unit = {}, onSearch: () -> Unit = {}, onAskHandled: () -> Unit = {},
     onSearchRowClicked: (SearchRow) -> Unit = {},
 ) {
@@ -96,7 +116,7 @@ fun AppListScreen(
             TextButton(onClick = { onEditLayout(!state.isEditingLayout) }) { Text(if (state.isEditingLayout) "Done" else "Edit layout", color = ink) }
             IconButton(onClick = { onSettingsEvent(SettingsEvent.OnSettingsIconClicked) }) { Icon(Icons.Default.Settings, "Customize Start", tint = ink) }
         }
-        LayoutSelector(state, ink, onProfile, onCreateLayout, onRenameLayout, onDeleteLayout)
+        LayoutSelector(state, ink, onProfile, onCreateLayout, onRenameLayout, onDeleteLayout, onReorderLayouts)
         tgo1014.gridlauncher.ui.composables.FrequentRow(state.appList, frequent, state.tileSettings.drawerSort, onAppClicked, { onPinToHotseat(it.packageName) })
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("All apps", color = ink, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
@@ -223,33 +243,132 @@ private fun SearchResultRow(row: SearchRow, ink: Color, onClick: () -> Unit) {
     }
 }
 
-/** Layout chips plus create, rename and delete for the user's own layouts. */
+/**
+ * Layout chips, plus create, rename and delete for every layout there is: a built-in one is renamed
+ * and deleted exactly like your own, and none of them can be lost.
+ *
+ * A chip is one gesture surface carrying three things. A tap selects it. A hold decides on the lift
+ * whether it opened the menu or carried the chip somewhere else, so a long press and a drag never
+ * both claim the same finger. Nothing is consumed before the hold completes, which is what leaves
+ * the row free to scroll under a finger that is still deciding.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LayoutSelector(
     state: HomeState, ink: Color, onProfile: (String) -> Unit,
     onCreate: (String, Boolean) -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit,
+    onReorder: (List<String>) -> Unit = {},
 ) {
     val accent = LocalGlass.current.accent
     var newLayout by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<String?>(null) }
     val layouts = state.layouts.ifEmpty { builtinProfileNames }
-    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
-        items(layouts, key = { it }) { name ->
+    val listState = rememberLazyListState()
+    val order = remember { mutableStateOf(layouts) }
+    val dragging = remember { mutableStateOf<String?>(null) }
+    val travel = remember { mutableFloatStateOf(0f) }
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val edge = remember(density) { with(density) { 48.dp.toPx() } }
+    val nudge = remember(density) { with(density) { 12.dp.toPx() } }
+    // The bar keeps showing the order the finger left it in until the store hands the same one
+    // back, so the chips never jump to the old order for the frame the write takes.
+    LaunchedEffect(layouts) { if (dragging.value == null) order.value = layouts }
+    // A chip held near either end walks the row along under it, so a bar wider than the screen can
+    // still be reordered without letting go.
+    LaunchedEffect(dragging.value) {
+        if (dragging.value == null) return@LaunchedEffect
+        while (true) {
+            withFrameNanos { }
+            val name = dragging.value ?: return@LaunchedEffect
+            val info = listState.layoutInfo
+            val chip = info.visibleItemsInfo.firstOrNull { it.key == layoutChipKey(name) } ?: continue
+            val centre = chip.offset - listState.firstVisibleItemScrollOffset + travel.floatValue + chip.size / 2f
+            val width = info.viewportSize.width.toFloat()
+            val overshoot = when {
+                centre > width - edge -> centre - (width - edge)
+                centre < edge -> centre - edge
+                else -> 0f
+            }
+            if (overshoot == 0f) continue
+            val before = listState.firstVisibleItemScrollOffset
+            listState.scrollBy(overshoot.coerceIn(-nudge, nudge))
+            travel.floatValue += listState.firstVisibleItemScrollOffset - before
+        }
+    }
+    LazyRow(modifier = Modifier.fillMaxWidth(), state = listState, horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
+        items(order.value, key = ::layoutChipKey) { name ->
             var menu by remember(name) { mutableStateOf(false) }
-            Box {
+            val lifted = dragging.value == name
+            Box(Modifier
+                .zIndex(if (lifted) 1f else 0f)
+                // Every layer property is set on every frame, lifted or not: a layer that keeps the
+                // last scale and shadow it was given would leave the chip looking picked up for good.
+                .graphicsLayer {
+                    translationX = travel.floatValue
+                    scaleX = if (lifted) 1.06f else 1f
+                    scaleY = scaleX
+                    shadowElevation = if (lifted) 12.dp.toPx() else 0f
+                    shape = if (lifted) RoundedCornerShape(10.dp) else RectangleShape
+                }
+                .pointerInput(name) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (awaitLongPressOrCancellation(down.id) == null) return@awaitEachGesture
+                        var draft: List<String>? = null
+                        var moved = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.changedToUpIgnoreConsumed()) {
+                                // The lift is what tells a plain hold from a drag, so the menu opens
+                                // here and the chip's own click is held off by eating the lift.
+                                if (!moved) { change.consume(); menu = true }
+                                break
+                            }
+                            // The row scrolling sideways under the finger is a scroll, never a reorder.
+                            if (!moved && change.isConsumed) break
+                            val delta = change.positionChange()
+                            if (!moved && (abs(travel.floatValue) + delta.getDistance()) > viewConfiguration.touchSlop) {
+                                moved = true
+                                dragging.value = name
+                                draft = order.value
+                                travel.floatValue = 0f
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            if (!moved) continue
+                            change.consume()
+                            travel.floatValue += delta.x
+                            // The chip trades places with its neighbour the moment the finger carries
+                            // its centre past theirs, and the finger's own offset is corrected by the
+                            // distance the slot moved so the chip stays under the finger.
+                            val swap = draft?.let { dragPast(it, name, travel.floatValue, listState.layoutInfo.visibleItemsInfo) }
+                            if (swap != null) {
+                                draft = swap.first
+                                order.value = swap.first
+                                travel.floatValue -= swap.second
+                            }
+                        }
+                        if (moved) {
+                            dragging.value = null
+                            travel.floatValue = 0f
+                            onReorder(draft ?: order.value)
+                        }
+                    }
+                }) {
                 FilterChip(selected = state.profile == name, onClick = { onProfile(name) },
                     label = { Text(name, color = ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     colors = FilterChipDefaults.filterChipColors(containerColor = Color.Transparent, selectedContainerColor = accent.copy(alpha = .22f)))
-                if (name !in builtinProfileNames) Box(Modifier.matchParentSize().combinedClickable(onClick = {}, onLongClick = { menu = true }))
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text("Rename $name") }, onClick = { menu = false; renaming = name })
-                    DropdownMenuItem(text = { Text("Delete $name") }, onClick = { menu = false; deleting = name })
+                    DropdownMenuItem(text = { Text("Delete $name") }, enabled = layouts.size > 1, onClick = { menu = false; deleting = name })
+                    if (layouts.size <= 1) Text("Start always keeps one layout", style = MaterialTheme.typography.bodySmall,
+                        color = LocalContentColor.current.copy(alpha = .7f), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 }
             }
         }
-        item("add") {
+        item(layoutChipKey("add")) {
             AssistChip(onClick = { newLayout = true }, label = { Text("New", color = ink) },
                 colors = AssistChipDefaults.assistChipColors(containerColor = Color.Transparent, labelColor = ink),
                 leadingIcon = { Icon(Icons.Default.Add, null, tint = ink, modifier = Modifier.size(18.dp)) })
@@ -277,8 +396,44 @@ private fun LayoutSelector(
         }, confirmButton = { TextButton(enabled = name.isNotBlank() && name != current, onClick = { onRename(current, name); renaming = null }) { Text("Rename") } },
             dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } })
     }
-    deleting?.let { target -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Delete $target?") },
-        text = { Text("This removes the $target layout and its tiles. It cannot be undone. Copy it to another layout first if you want to keep it.") },
-        confirmButton = { TextButton(onClick = { onDelete(target); deleting = null }) { Text("Delete") } },
-        dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
+    deleting?.let { target ->
+        val moves = target == state.profile
+        val fallback = resolveScheduledLayout(defaultProfileName, layouts.filterNot { it == target })
+        AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Delete $target?") },
+            text = { Column {
+                Text("This removes the $target layout and its tiles. It cannot be undone. Copy it to another layout first if you want to keep it.")
+                // Deleting the layout being shown is allowed, but only by leaving it first, and
+                // that has to be said here rather than discovered afterwards.
+                if (moves) Text("You are in $target, so Start moves to $fallback first.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(onClick = { onDelete(target); deleting = null }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }) }
+}
+
+/**
+ * A chip's key in the row. `sanitizeLayoutName` turns control characters into spaces, so a leading
+ * one cannot appear in a layout name and no layout can ever collide with a key of its own.
+ */
+private fun layoutChipKey(name: String) = "\u0000$name"
+
+/**
+ * The order after the chip called [name] has been carried [travel] pixels sideways, and how far the
+ * finger's own offset has to travel with the slot so the chip stays under it. A neighbour that is
+ * not on screen is not a swap, which is what stops a drag inventing a position nothing was drawn
+ * at, and the row is never shorter than the layouts in it.
+ */
+private fun dragPast(draft: List<String>, name: String, travel: Float, visible: List<LazyListItemInfo>): Pair<List<String>, Float>? {
+    val from = draft.indexOf(name)
+    if (from < 0) return null
+    val me = visible.firstOrNull { it.key == layoutChipKey(name) } ?: return null
+    fun neighbour(step: Int) = draft.getOrNull(from + step)?.let { key -> visible.firstOrNull { it.key == layoutChipKey(key) } }
+    val centre = me.offset + travel + me.size / 2f
+    val right = neighbour(1)
+    val left = neighbour(-1)
+    val (swap, to) = when {
+        right != null && centre > right.offset + right.size / 2f -> right to from + 1
+        left != null && centre < left.offset + left.size / 2f -> left to from - 1
+        else -> return null
+    }
+    return draft.toMutableList().apply { add(to, removeAt(from)) }.toList() to (swap.offset - me.offset).toFloat()
 }
