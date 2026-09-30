@@ -4,6 +4,7 @@ activity-compose = "1.10.1"
 # @pin so this is not updated to alpha versions
 agp = "9.4.1"
 androidx-test-ext-junit = "1.3.0"
+androidx-window = "1.5.1"
 app-turbine = "1.1.0"
 coil-compose = "3.0.4"
 compose-bom = "2024.09.00"
@@ -24,6 +25,7 @@ accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 androidx-datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-ext-junit" }
+androidx-window = { module = "androidx.window:window", version.ref = "androidx-window" }
 app-turbine = { module = "app.cash.turbine:turbine", version.ref = "app-turbine" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil-compose" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }

@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
@@ -43,7 +47,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.lerp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.request.ImageRequest
@@ -57,8 +60,11 @@ import tgo1014.gridlauncher.ui.composables.LaunchedIfTrueEffect
 import tgo1014.gridlauncher.ui.models.GridItem
 import tgo1014.gridlauncher.ui.models.SettingsEvent
 import tgo1014.gridlauncher.ui.models.TileEvent
+import tgo1014.gridlauncher.ui.PaneSplit
 import tgo1014.gridlauncher.ui.WindowPosture
+import tgo1014.gridlauncher.ui.drawerScrimFor
 import tgo1014.gridlauncher.ui.postureFor
+import tgo1014.gridlauncher.ui.rememberHinge
 import tgo1014.gridlauncher.ui.theme.AsyncImage
 
 @Composable
@@ -142,6 +148,9 @@ private fun HomeScreen(
 ) {
     val glass = rememberGlass(state.tileSettings)
     val accent = glass.accent
+    // Only used to ask the window manager what the window's posture is; a window that is not an
+    // activity simply reports no fold and the width rule decides, which is the old behaviour.
+    val windowActivity = LocalActivity.current as? android.app.Activity
     CompositionLocalProvider(LocalGlass provides glass, androidx.compose.material3.LocalContentColor provides glass.ink) {
     androidx.compose.material3.MaterialTheme(
     colorScheme = if (state.tileSettings.darkTheme) androidx.compose.material3.darkColorScheme(
@@ -157,11 +166,8 @@ private fun HomeScreen(
     val scrollOffset by remember(pagerWidth) {
         derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction) * pagerWidth }
     }
-    val alpha = lerp(
-        start = 0f,
-        stop = 0.7f,
-        fraction = (scrollOffset / pagerWidth.toFloat()).coerceIn(0f, 1f)
-    )
+    val scrimFraction = (scrollOffset / pagerWidth.toFloat()).coerceIn(0f, 1f)
+    val scrim = drawerScrimFor(state.tileSettings.darkTheme, scrimFraction)
     LaunchedIfTrueEffect(state.goToHome) {
         pagerState.scrollToPage(0)
     }
@@ -217,29 +223,49 @@ private fun HomeScreen(
     // A phone window measures 411dp and takes the pager branch, which is the whole of the old screen
     // width test with nothing else changed about it.
     BoxWithConstraints {
-    when (postureFor(maxWidth)) {
-    WindowPosture.Expanded ->
-        // Split down the middle, which is where a foldable's hinge runs, so the divider lands on the
-        // seam rather than through a pane. Neither side is weighted: an off-centre seam would put
-        // the hinge inside the app list on one foldable and inside Start on the next.
+    val posture = postureFor(maxWidth, maxHeight, rememberHinge(maxWidth, maxHeight, windowActivity))
+    when (posture) {
+    is WindowPosture.Expanded -> {
+    val split = posture.split
+    // The drawer needs a scrim in the light theme and has never needed one in the dark: the light
+    // ink is #142C42 and a photograph can be any colour at all, while the dark ink is white and is
+    // already legible on the wallpaper. That is why this is a branch on the theme and not a
+    // constant, and it is why nothing about the dark drawer moves. See drawerScrimFor.
+    val drawerPane = Modifier.background(if (state.tileSettings.darkTheme) Color.Transparent else drawerScrimFor(false, 1f).paint())
+    if (split.stacked) {
+        // A hinge that runs across the window, which is the tabletop posture. A left-right split
+        // here would cut the divider straight along the seam, so the panes are stacked instead: the
+        // one you are looking at on top, the one you reach for below it, and the seam between.
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxWidth().height(split.start).padding(bottom = PANE_GUTTER)) { start(false) }
+            HorizontalDivider(color = glassColor(state), thickness = split.divider)
+            Box(Modifier.fillMaxWidth().weight(1f).then(drawerPane)) { allApps() }
+        }
+    } else {
         Row(Modifier.fillMaxSize()) {
             // Start runs its tiles out to the pane edge on a phone, and it still does on the left
             // here, but the seam end is held back. The app list keeps 20dp of its own on both sides,
             // so without this the tiles would end up hard against the divider while the list stood
             // well off it - and the divider is exactly where the hardware gap is, which is not a
-            // place to leave a tile's edge. Nothing here knows how wide that gap really is; see
-            // postureFor.
-            Box(Modifier.fillMaxHeight().weight(0.5f).padding(end = PANE_GUTTER)) { start(false) }
-            VerticalDivider(color = glassColor(state))
-            Box(Modifier.fillMaxHeight().weight(0.5f)) { allApps() }
+            // place to leave a tile's edge.
+            Box(Modifier.fillMaxHeight().then(paneWidth(split, start = true)).padding(end = PANE_GUTTER)) { start(false) }
+            // On a window with no fold this is the even split it has always been, unchanged. With a
+            // fold it is the fold's own bounds: the pane on one side of the seam, the pane on the
+            // other, and the divider occupying the seam itself rather than the middle of the window.
+            // Neither side is weighted, because a weighted split would put the divider back at the
+            // midpoint and cut through whichever pane the hinge is not in.
+            VerticalDivider(color = glassColor(state), thickness = split.divider)
+            Box(Modifier.fillMaxHeight().then(paneWidth(split, start = false)).then(drawerPane)) { allApps() }
         }
+    }
+    }
     WindowPosture.Compact ->
     HorizontalPager(
         state = pagerState,
         flingBehavior = PagerDefaults.flingBehavior(state = pagerState, pagerSnapDistance = PagerSnapDistance.atMost(2)),
         modifier = Modifier
             .fillMaxSize()
-            .background(if (state.tileSettings.isTransparencyEnabled) Color.Black.copy(alpha) else Color.Transparent)
+            .background(if (state.tileSettings.isTransparencyEnabled) scrim.paint() else Color.Transparent)
             .onSizeChanged { pagerWidth = it.width }
     ) {
         when (it) {
@@ -264,6 +290,20 @@ private fun glassColor(state: HomeState) = if (state.tileSettings.darkTheme) Col
 
 /** What the expanded layout holds Start back from the divider, matched to the app list's own inset. */
 private val PANE_GUTTER = 20.dp
+
+/**
+ * How wide one pane of an expanded window is.
+ *
+ * With no fold this is the `weight(0.5f)` the layout has always used, and it is kept as a weight on
+ * purpose rather than computed: a weight divides whatever the row has left after the divider, so a
+ * window with no hinge lands on exactly the same pixels it did before this was fold-aware, which is
+ * the property worth protecting on a device that reports nothing.
+ *
+ * With a fold the pane is the hinge bound instead, because the seam is where the hardware is and the
+ * pane has to end at it rather than somewhere near it.
+ */
+private fun RowScope.paneWidth(split: PaneSplit, start: Boolean): Modifier =
+    if (split.hinge == null) Modifier.weight(0.5f) else Modifier.width(if (start) split.start else split.appList)
 
 /** How far back Start sits, as a share of the screen, once the app list owns it. */
 private const val REVEAL_SHIFT = 0.09f
