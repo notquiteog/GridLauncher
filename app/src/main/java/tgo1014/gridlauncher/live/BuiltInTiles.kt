@@ -141,7 +141,7 @@ object BuiltInTiles {
 
     /** A plain time-of-day greeting and whatever is next, the way Start greeted you before Cortana. */
     private fun greeting(context: Context): Pair<String, String> {
-        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val hour = Clock.localTime().hour
         val hello = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
         val next = agenda(context).second
         return hello to if (next.startsWith("No upcoming") || next.startsWith("Tap to")) "Here is your day" else next

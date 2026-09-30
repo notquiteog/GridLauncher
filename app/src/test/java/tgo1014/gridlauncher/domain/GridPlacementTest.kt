@@ -36,6 +36,20 @@ class GridPlacementTest {
         assertValid(after)
         assertEquals(after, GridPlacement.update(after, pinned.copy(x = 0)))
     }
+    @Test fun aTileWiderThanTheSpaceLeftIsBroughtBackInside() {
+        // A stored grid can ask for a two-wide tile at x=2 in a three-column grid - a hand-edited
+        // backup, a grid written before the column count changed. Placement has to clamp it, because a
+        // tile hanging off the edge is not drawn the same way twice: on one machine the renderer
+        // dropped the overflow, on another it drew a phantom column, and the two screenshots of one
+        // scene then disagreed by twenty per cent of the image.
+        val overflowing = GridItem(4, App("Clock", "grid://clock"), 2, x = 2, y = 1)
+        val placed = GridPlacement.place(overflowing, emptyList(), columns = 3)
+        assertTrue(placed.x + placed.width <= 3)
+        assertTrue(placed.width in 1..3)
+        // And clamping is a pure function of what it was given, which is what makes a grid reproducible.
+        assertEquals(placed, GridPlacement.place(overflowing, emptyList(), columns = 3))
+    }
+
     @Test(expected = IllegalArgumentException::class) fun narrowingCannotSilentlyMovePinnedPosition() {
         GridPlacement.reflow(listOf(GridItem(1, App(), 1, x = 2, positionPinned = true)), 2)
     }

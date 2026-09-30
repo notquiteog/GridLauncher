@@ -159,7 +159,7 @@ object Screenshots {
             GridItem(1, App("Work", BuiltInTiles.GROUP), 3, 1, groupLabel = "Work"),
             clock(2, 0, 1),
             GridItem(3, settings, 1, 1, x = 1, y = 1, tileColor = 0xFF107C10),
-            clock(4, 2, 1, 2).copy(tileColor = 0xFF8764B8),
+            clock(4, 2, 1, colour = 0xFF8764B8),
             GridItem(5, App("Greeting", BuiltInTiles.GREETING), 2, 1, x = 0, y = 2, tileColor = 0xFF0063B1),
             GridItem(6, App("Evening", BuiltInTiles.GROUP), 3, 1, y = 3, groupLabel = "Evening"),
             clock(7, 0, 4),
