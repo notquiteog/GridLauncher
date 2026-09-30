@@ -107,10 +107,10 @@ object BuiltInTiles {
     }
 
     private fun clock(context: Context): Pair<String, String> {
-        val now = Date()
+        val now = Clock.date()
         val use24 = android.text.format.DateFormat.is24HourFormat(context)
-        val time = java.text.SimpleDateFormat(if (use24) "HH:mm" else "h:mm", java.util.Locale.getDefault()).format(now)
-        return time to DateFormat.getDateInstance(DateFormat.MEDIUM).format(now)
+        val time = Clock.inZone(java.text.SimpleDateFormat(if (use24) "HH:mm" else "h:mm", java.util.Locale.getDefault())).format(now)
+        return time to Clock.inZone(DateFormat.getDateInstance(DateFormat.MEDIUM)).format(now)
     }
 
     private fun battery(context: Context): Pair<String, String> {
@@ -206,7 +206,7 @@ object BuiltInTiles {
 
     /** The tile's own two-line reading: the next event, or why there is none. */
     private fun agenda(context: Context): Pair<String, String> {
-        val today = java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault()).format(Date())
+        val today = Clock.inZone(java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.getDefault())).format(Clock.date())
         if (!granted(context, Manifest.permission.READ_CALENDAR)) return today to "Tap to connect calendar"
         val event = agendaEvents(context, 1).firstOrNull() ?: return today to "No upcoming events"
         return event.title to if (event.allDay) "All day · $today"

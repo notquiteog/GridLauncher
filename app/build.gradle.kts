@@ -24,6 +24,12 @@ android {
         require(distribution in listOf("github", "play"))
         buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"$distribution\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // "update" records baselines instead of comparing them; only scripts/screenshot-baselines.sh
+        // asks for it, and the result is meant to be looked at before it is committed.
+        testInstrumentationRunnerArgument(
+            "grid.screenshots",
+            providers.gradleProperty("screenshotBaselines").orElse("compare").get(),
+        )
         vectorDrawables.useSupportLibrary = true
     }
     signingConfigs {
@@ -54,6 +60,16 @@ android {
     if (providers.gradleProperty("distributionChannel").orNull == "play") {
         sourceSets.getByName("debug").manifest.srcFile("src/play/AndroidManifest.xml")
         sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
+    }
+    sourceSets {
+        // Screenshot comparison math is plain Kotlin over packed pixels: no Android, no emulator,
+        // so it is exercised by fast JVM tests as well as by the instrumentation that feeds it.
+        getByName("test").java.srcDir("src/sharedTest/java")
+        getByName("androidTest").java.srcDir("src/sharedTest/java")
+    }
+    testOptions {
+        // A screenshot is only worth comparing if nothing is still moving when it is taken.
+        animationsDisabled = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

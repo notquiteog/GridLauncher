@@ -87,3 +87,6 @@ lint/tmp/
 *.jks
 *.keystore
 dist/
+
+# Python bytecode from the scripts in scripts/
+__pycache__/

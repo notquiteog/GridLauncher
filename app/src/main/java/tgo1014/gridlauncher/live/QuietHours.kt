@@ -17,7 +17,7 @@ object QuietHours {
     }.getOrDefault(false)
 
     /** Overnight windows are anchored to the evening they start. */
-    fun scheduled(settings: TileSettings, time: LocalTime = LocalTime.now()): Boolean {
+    fun scheduled(settings: TileSettings, time: LocalTime = Clock.localTime()): Boolean {
         if (!settings.quietHoursEnabled) return false
         val start = settings.quietStartHour
         val end = settings.quietEndHour
@@ -26,7 +26,7 @@ object QuietHours {
         return if (start > end) hour >= start || hour < end else hour in start until end
     }
 
-    fun active(settings: TileSettings, time: LocalTime = LocalTime.now()): Boolean = settings.meetingMode || scheduled(settings, time)
+    fun active(settings: TileSettings, time: LocalTime = Clock.localTime()): Boolean = settings.meetingMode || scheduled(settings, time)
 
     /**
      * Applies the system-wide filter when the user has granted Do Not Disturb access. Without the

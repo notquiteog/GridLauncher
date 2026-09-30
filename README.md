@@ -142,7 +142,7 @@ Toolchain: AGP 9.4.1, Gradle 9.6.0 (checksum pinned), Kotlin 2.4.20, Java 17, An
 
 ## CI and tests
 
-Each push, PR or manual run executes unit tests, lint, APK builds, signature and alignment verification, and Android 17 emulator tests. A separate verifier requires every declared device test to produce a passing result, including cases where Gradle reports success despite an installation failure. CI then installs and launches the signed release and uploads the APK, checksum, reports, logs and screenshot. Successful pushes to `android-17-live-tiles` publish a GitHub Release.
+Each push, PR or manual run executes unit tests, lint, APK builds, signature and alignment verification, Android 17 emulator tests, and screenshot comparison. A separate verifier requires every declared device test to produce a passing result, including cases where Gradle reports success despite an installation failure. CI then installs and launches the signed release, repeats the screenshot scenes in the expanded two-pane posture, and uploads the APK, checksum, reports, logs and every screenshot — including the actual capture and a magenta diff when one changed. Successful pushes to `android-17-live-tiles` publish a GitHub Release.
 
 Actions secrets: `APK_SIGNING_KEYSTORE` (base64) and `APK_SIGNING_PASSWORD`, alias `gridlauncher`. Keep the signing identity for update compatibility. PRs use development signing and receive no secrets.
 
@@ -151,10 +151,29 @@ scripts/setup-android.sh emulator
 scripts/emulator-test.sh
 ```
 
-**Unit tests** cover randomized packing, pinned anchors, compaction, whole-cell and group-header migration, layout-name sanitising, schedule resolution through renames and deletions, layout ordering, quiet-hour windows, theme-pack round trips and rejection, grid keyboard navigation, backup validation and versioning, the search index's persistence boundary, call-tile detection and control gating, category resolution and fallbacks, the Now board's privacy contract, posture and hinge arithmetic, and icon masking.
+**Unit tests** cover randomized packing, pinned anchors, compaction, whole-cell and group-header migration, layout-name sanitising, schedule resolution through renames and deletions, layout ordering, quiet-hour windows, theme-pack round trips and rejection, grid keyboard navigation, backup validation and versioning, the search index's persistence boundary, call-tile detection and control gating, category resolution and fallbacks, the Now board's privacy contract, posture and hinge arithmetic, icon masking, and the screenshot comparator's own sensitivity.
 
-**Device tests** cover real notification delivery and RemoteInput, privacy exclusions, semantic progress, white drawer text, edit/native-menu separation, pinning, drag-to-reorder including a pinned tile refusing to move, layout create/rename/delete, group headers and per-tile colours surviving a restart, folder editing in both directions, quiet hours, the hotseat surviving a column change, the frequent row, and the contact picker and Handoff payload.
+**Device tests** cover real notification delivery and RemoteInput, privacy exclusions, semantic progress, white drawer text, edit/native-menu separation, pinning, drag-to-reorder including a pinned tile refusing to move, layout create/rename/delete, group headers and per-tile colours surviving a restart, folder editing in both directions, quiet hours, the hotseat surviving a column change, the frequent row, the contact picker and Handoff payload, and the screenshot scenes.
 
-**What tests cannot see.** Every visual regression in this project's history was caught by a screenshot, never by a test, and green CI did not catch one of them. There is no screenshot comparison in CI. Treat the emulator as necessary but not sufficient, and check the rendering on the device you care about.
+### Screenshot comparison
+
+Every visual regression this launcher ever shipped — light-theme text at 1.19:1 over the wallpaper, Start's tile pane painting across the drawer, live tiles rendering blank, the alphabet rail on the wrong page — passed a fully green build, because nothing was looking at the pixels. CI now photographs seven scenes on every run and compares them: Start in both themes, All apps in both themes, edit mode, the two-pane layout in both themes, and a numeric legibility check.
+
+A baseline is only comparable if everything else is held still, so each scene pins the clock to a fixed instant in UTC, installs a committed wallpaper fixture rather than the system one, forces 24-hour time, resets every store the launcher reads, and waits for live-tile content to finish loading before capturing. Two numbers decide whether two images match: an 8-per-channel tolerance, which absorbs antialiasing, and a 0.05% changed-pixel budget — about one glyph on a 1080×2400 screen. Those are measured, not guessed: re-recording every scene on freshly created emulators produces byte-identical images, so the noise floor on a matching device is **zero** and the budget exists only for a runner whose rasteriser differs slightly from yours.
+
+A frame is only worth comparing if it is the same frame twice, so a capture waits for two identical captures in a row. Without that, the live-tile flip photographs mid-rotation and produces a diff of thousands of pixels that is not a regression.
+
+The comparator itself is plain Kotlin over packed pixels in a shared test source directory, with JVM tests that check it can *fail* — a one-pixel change is found, a single changed glyph is rejected, a stray pixel is not. A comparator that has quietly stopped comparing anything fails silently, which is the one failure mode a screenshot suite cannot survive.
+
+```sh
+scripts/screenshot-baselines.sh verify   # compare, on an emulator identical to CI's
+scripts/screenshot-baselines.sh record   # re-record into src/androidTest/assets
+```
+
+Baselines live in `app/src/androidTest/assets/screenshots/`. A **missing baseline is a failure, never a silent record** — a baseline nobody reviewed is not evidence of anything. Re-recording is deliberately a pull request: run the workflow with the `update_screenshots` input and CI records on the runner that will compare, then opens a PR for a human to read the image diffs. Two machines can disagree about an antialiasing pixel, which is why the authoritative baseline is the one the runner recorded.
+
+**What this still cannot see.** A baseline cannot tell you whether a scene is *legible*, because an unreadable drawer is perfectly stable from run to run — which is why the light-theme contrast is also asserted as a number, measured off the rendered pixels, against the WCAG AA floor of 4.5:1. There is deliberately no "Start, scrolled" scene: the pane is driven by a parallax drag rather than a scroll container, so a gesture's applied distance depends on layout timing and lands a few hundred pixels apart between boots. A scene that fails for a reason unrelated to the code is worse than a missing scene, because the only way to green it is to re-record. The two-pane layout, where an unclipped pane does the most damage, is covered instead.
+
+`notificationListenerReceivesAndroidPostedNotification` fails on emulator images where the notification listener service never binds; it is environmental and fails identically on unmodified `HEAD`. OEM-specific rendering, media-session behaviour, the home-screen widget on an OEM shell, live hinge behaviour, and two-device Handoff still need hardware testing. Treat the emulator as necessary but not sufficient, and check the rendering on the device you care about.
 
 `notificationListenerReceivesAndroidPostedNotification` fails on emulator images where the notification listener service never binds; it is environmental and fails identically on unmodified `HEAD`. OEM-specific rendering, media-session behaviour, the home-screen widget on an OEM shell, live hinge behaviour, and two-device Handoff still need hardware testing.

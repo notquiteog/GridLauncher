@@ -38,11 +38,11 @@ fun StartHeader(visible: Boolean, modifier: Modifier = Modifier) {
     val alpha by animateFloatAsState(1f - 0.55f * fraction, label = "Header fade")
     // A medium date keeps the header on one line on any display width.
     // Re-formats when the day changes, so an open launcher never shows yesterday.
-    var day by remember { mutableStateOf(java.time.LocalDate.now()) }
-    LaunchedEffect(Unit) { while (true) { day = java.time.LocalDate.now(); delay(60_000) } }
+    var day by remember { mutableStateOf(tgo1014.gridlauncher.live.Clock.localDate()) }
+    LaunchedEffect(Unit) { while (true) { day = tgo1014.gridlauncher.live.Clock.localDate(); delay(60_000) } }
     val date = remember(day) {
-        DateFormat.getDateInstance(DateFormat.MEDIUM, java.util.Locale.getDefault())
-            .format(Date.from(day.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()))
+        tgo1014.gridlauncher.live.Clock.inZone(DateFormat.getDateInstance(DateFormat.MEDIUM, java.util.Locale.getDefault()))
+            .format(Date.from(day.atStartOfDay(tgo1014.gridlauncher.live.Clock.zone()).toInstant()))
     }
     // Reduce motion stops the animation, it does not remove the header.
     AnimatedVisibility(visible, enter = if (glass.motion) fadeIn() else androidx.compose.animation.EnterTransition.None,

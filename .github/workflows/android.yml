@@ -3,15 +3,21 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      update_screenshots:
+        description: Re-record the screenshot baselines on CI and open a pull request with them
+        type: boolean
+        default: false
 permissions:
   contents: write
+  pull-requests: write
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       VERSION_CODE: ${{ github.run_number }}
     steps:
@@ -65,6 +71,33 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Re-record screenshot baselines on the runner
+        # Two machines can disagree about an antialiasing pixel, so the authoritative baseline is
+        # the one this runner recorded. Refreshes go through a pull request because a baseline
+        # committed straight to the branch is a baseline nobody looked at.
+        if: github.event_name == 'workflow_dispatch' && inputs.update_screenshots == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./gradlew testDebugUnitTest assembleDebugAndroidTest
+          scripts/screenshot-baselines.sh record
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/androidTest/assets/screenshots
+          if git diff --cached --quiet; then
+            echo "Scenes are unchanged; nothing to propose." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="screenshots-${{ github.run_number }}"
+          git commit -m "Re-record screenshot baselines on CI" -m \
+            "Recorded by workflow run ${GITHUB_RUN_ID} on the runner that will compare them."
+          git push origin "HEAD:$branch"
+          gh pr create --head "$branch" --base android-17-live-tiles \
+            --title "Re-record screenshot baselines" \
+            --body "Recorded on the CI runner by run ${GITHUB_RUN_ID}.
+
+Look at the image diffs before merging: a screenshot baseline only proves something if a human
+confirmed the change was intended."
       - name: Android 17 install and UI tests
         run: scripts/emulator-test.sh
       - name: Upload installable APK
