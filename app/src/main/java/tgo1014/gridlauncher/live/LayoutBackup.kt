@@ -8,7 +8,7 @@ import tgo1014.gridlauncher.ui.models.GridItem
 
 @Serializable
 data class LayoutBackup(
-    val version: Int = 3,
+    val version: Int = 4,
     val tiles: List<GridItem>,
     val settings: TileSettings,
     /** Layout names to recreate, so a restore brings back every custom layout, not just one grid. */
