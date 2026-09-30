@@ -89,15 +89,12 @@ jobs:
             exit 0
           fi
           branch="screenshots-${{ github.run_number }}"
-          git commit -m "Re-record screenshot baselines on CI" -m \
-            "Recorded by workflow run ${GITHUB_RUN_ID} on the runner that will compare them."
+          git commit -m "Re-record screenshot baselines on CI" \
+            -m "Recorded by workflow run ${GITHUB_RUN_ID} on the runner that will compare them."
           git push origin "HEAD:$branch"
           gh pr create --head "$branch" --base android-17-live-tiles \
             --title "Re-record screenshot baselines" \
-            --body "Recorded on the CI runner by run ${GITHUB_RUN_ID}.
-
-Look at the image diffs before merging: a screenshot baseline only proves something if a human
-confirmed the change was intended."
+            --body "Recorded on the CI runner by run ${GITHUB_RUN_ID}. Read the image diffs before merging: a screenshot baseline only proves something if a human confirmed the change was intended."
       - name: Android 17 install and UI tests
         run: scripts/emulator-test.sh
       - name: Upload installable APK
