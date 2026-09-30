@@ -98,7 +98,6 @@ fun AppListScreen(
         }
         LayoutSelector(state, ink, onProfile, onCreateLayout, onRenameLayout, onDeleteLayout)
         tgo1014.gridlauncher.ui.composables.FrequentRow(state.appList, frequent, state.tileSettings.drawerSort, onAppClicked, { onPinToHotseat(it.packageName) })
-        NowArea(hazeState)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("All apps", color = ink, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
             TextButton(onClick = onBackPressed, modifier = Modifier.semantics { contentDescription = "Back to Start" }) {
@@ -109,7 +108,15 @@ fun AppListScreen(
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = ink, focusedPlaceholderColor = ink.copy(alpha = .7f), unfocusedPlaceholderColor = ink.copy(alpha = .7f)),
             trailingIcon = { if (state.filterString.isNotEmpty()) TextButton(onClick = onFilterClearPressed) { Text("Clear") } }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
         if (grouped.isEmpty() && found.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
-        Row(Modifier.fillMaxWidth().weight(1f)) {
+        // The board and the app list are the only things still competing for height here, and the
+        // board is the secondary one, so it is handed a weighted share of what the header, the
+        // layout chips, the frequent row and the search field have left and the list is handed the
+        // rest. Compose divides a Column's spare height between the weighted children before it
+        // measures any of them, so the list's share does not move when cards arrive: with the board
+        // present the list is (1 - BOARD_SHARE) / BOARD_SHARE, or 2.85, times its height, and with
+        // no cards the board contributes no node at all and the list has all of it.
+        NowArea(hazeState, Modifier.weight(BOARD_SHARE))
+        Row(Modifier.fillMaxWidth().weight(1f - BOARD_SHARE)) {
             if (letters.isNotEmpty()) DrawerRail(letters, grouped, listState, onShowAlphabet = { alphabet = true },
                 modifier = Modifier.width(32.dp).fillMaxHeight())
             LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 24.dp)) {

@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -222,7 +223,9 @@ private fun HomeScreen(
             .onSizeChanged { pagerWidth = it.width }
     ) {
         when (it) {
-            0 -> Box(Modifier.fillMaxSize().startReveal(pagerState, glass.motion, pagerWidth)) { start(true) }
+            // clipToBounds() sits outside the reveal on purpose: it is the one thing that keeps the
+            // transformed pane inside its own page. See startReveal.
+            0 -> Box(Modifier.fillMaxSize().clipToBounds().startReveal(pagerState, glass.motion, pagerWidth)) { start(true) }
             1 -> allApps()
         }
     }
@@ -256,6 +259,23 @@ private const val REVEAL_SCALE = 0.05f
  *
  * With motion off the layer stays at its default identity and the pager is told to snap, so the
  * transition is one frame rather than a fast one.
+ *
+ * Two things about it are load bearing rather than taste, and both were wrong the first time.
+ *
+ * The shift is negative. Start moves the way the pager has just moved it, further back off the
+ * left, which is what opens the gap the effect is for. Shifting it the other way pushed page 0
+ * towards page 1, so the two panes never separated at all.
+ *
+ * And the layer is clipped to the page. Nothing in the pager clips: a page is a slot in a
+ * LazyLayout, and the pager measures it, places it and moves it without ever issuing a clip, so a
+ * translated page paints wherever the translation takes it, over the next page's slot. The
+ * modifier order is the whole fix - `clipToBounds()` is outside `startReveal` because the clip
+ * node is the outer one, and an outer clip is what bounds an inner transform. Swapping them would
+ * move the clip along with the content and put the overlap straight back. The clip node is at the
+ * page's own bounds, so the reveal is now a window that pans across Start and the wallpaper shows
+ * through it, and it cannot reach a single pixel of the app list. Dropdown menus and sheets are
+ * separate windows and the tile peek is a dialog, so nothing that deliberately leaves the page is
+ * caught by it either.
  */
 private fun Modifier.startReveal(pager: PagerState, motion: Boolean, pagerWidth: Int): Modifier =
     graphicsLayer {
@@ -263,7 +283,7 @@ private fun Modifier.startReveal(pager: PagerState, motion: Boolean, pagerWidth:
         // Zero on Start, one on the drawer, and whatever lies between while a page is in motion, so
         // the pane lags the drag and then catches up with it.
         val away = (pager.currentPage + pager.currentPageOffsetFraction).coerceIn(0f, 1f)
-        translationX = REVEAL_SHIFT * pagerWidth * away
+        translationX = -REVEAL_SHIFT * pagerWidth * away
         val scale = 1f - REVEAL_SCALE * away
         scaleX = scale
         scaleY = scale

@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -89,9 +90,16 @@ import java.util.Date
  * The Windows Phone Now board: a vertical stack of cards that is only here when something is
  * happening. Each card says where its content came from, pans sideways to the rest of what it has,
  * and opens in place rather than taking the screen away.
+ *
+ * The board is a guest on the app list page, so it is bounded twice over. The drawer hands it a
+ * weighted share of the height the list and the board are splitting, which is what stops a card
+ * arriving from costing the list whatever the cards happen to add up to, and [maxHeight] stops it
+ * on a window tall enough that even that share would be a wall of cards. Past either bound the
+ * cards scroll inside the board. With nothing to say the board composes no node at all, so an
+ * empty page reserves no height for it whatsoever.
  */
 @Composable
-fun NowArea(haze: HazeState) {
+fun NowArea(haze: HazeState, modifier: Modifier = Modifier, maxHeight: Dp = BOARD_MAX) {
     val glass = LocalGlass.current
     val context = LocalContext.current
     val notifications by NotificationTiles.notifications.collectAsStateWithLifecycle()
@@ -137,10 +145,15 @@ fun NowArea(haze: HazeState) {
 
     val cards = NowBoard.cards(BoardInput(settings, glass.quiet, glass.locked, notifications, nowPlaying, mediaApp, agenda, categories, money))
     val duration = if (glass.motion) 240 else 0
-    AnimatedVisibility(visible = cards.isNotEmpty(),
+    // The bound goes on the outermost node so it holds the whole board, padding and animation
+    // included, and so the scrolling column below measures itself against what is left of it. With
+    // no cards the board is not composed at all rather than collapsed to nothing, so nothing is
+    // held back from the app list while there is nothing to say.
+    AnimatedVisibility(visible = cards.isNotEmpty(), modifier = modifier.heightIn(max = maxHeight),
         enter = fadeIn(tween(duration)) + expandVertically(tween(duration)),
         exit = fadeOut(tween(duration)) + shrinkVertically(tween(duration))) {
-        Column(Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)
+            .verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
                 Text("Now", style = MaterialTheme.typography.labelLarge, color = glass.ink, modifier = Modifier.weight(1f).padding(start = 8.dp))
                 // Money is the one slot the user fills in, so the board is where they fill it in.
@@ -148,9 +161,7 @@ fun NowArea(haze: HazeState) {
                     Icon(Icons.Default.Add, "Choose a money app for Now", tint = glass.ink)
                 }
             }
-            Column(Modifier.fillMaxWidth().heightIn(max = BOARD_HEIGHT).verticalScroll(rememberScrollState())) {
-                cards.forEach { card -> NowCardView(card, haze, glass, ::act) }
-            }
+            cards.forEach { card -> NowCardView(card, haze, glass, ::act) }
         }
     }
     previewKey?.let { NotificationPreview("Now", emptySet(), { previewKey = null }, key = it) }
@@ -326,4 +337,17 @@ private fun launch(context: Context, intent: Intent?) {
 private fun toast(context: Context, message: String) = Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
 
 private const val REFRESH_MS = 30_000L
-private val BOARD_HEIGHT = 300.dp
+
+/**
+ * The board's share of the height the drawer has left once its own controls have taken theirs.
+ *
+ * Just over a quarter, so the app list keeps nearly three quarters of it and stays the taller of
+ * the two by a factor of nearly three however many cards the board is holding. The absolute cap is
+ * for the other end of the range: a desktop-sized Continuum window leaves so much height spare that
+ * a quarter of it would be a wall of cards, so past [BOARD_MAX] the board stops growing and its
+ * cards scroll.
+ */
+internal const val BOARD_SHARE = 0.26f
+
+/** No window is big enough for the board to claim more of one than this. */
+internal val BOARD_MAX = 240.dp
