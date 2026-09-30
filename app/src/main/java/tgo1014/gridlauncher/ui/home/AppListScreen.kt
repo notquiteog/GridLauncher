@@ -29,6 +29,7 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import tgo1014.gridlauncher.ui.models.SettingsEvent
 import tgo1014.gridlauncher.data.builtinProfileNames
@@ -49,6 +50,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
@@ -109,7 +112,33 @@ fun AppListScreen(
     val background = if (state.tileSettings.isTransparencyEnabled) Color.Transparent else if (state.tileSettings.darkTheme) Color(0xFF101E30) else Color(0xFFEDF4FA)
     CompositionLocalProvider(LocalContentColor provides ink) {
     Column(Modifier.fillMaxSize().background(background).systemBarsPadding().imePadding().padding(horizontal = 20.dp)) {
+        // The one-handed gap stays the first thing in the column, which is the whole of what it is:
+        // a thumb-reach offset applied to the page. With it off - the default - nothing is above the
+        // search box, so the box is the first thing on the page, as it is in the reference.
         if (state.tileSettings.oneHanded) Spacer(Modifier.height(80.dp))
+        // The reference puts the search box at the very top of the app list, above everything else
+        // on the page. It is a plain child of this column, so the date row, the layout chips, the
+        // frequent row, the "All apps" heading and the jump rail are all laid out below it in the
+        // normal flow and none of them can overlap it at any pane height. It is the first weighted-
+        // height sibling, so BOARD_SHARE still divides exactly the same remainder it did before: the
+        // field is a fixed-height child wherever in the column it sits.
+        OutlinedTextField(state.filterString, onFilterTextChanged,
+            // The visible placeholder is the reference's short "Search". What a screen reader is
+            // told, and what the instrumented tests type into, is "Search apps": that is the phrase
+            // that says what the box is for, while the visible word stays the reference's.
+            placeholder = { Text("Search", modifier = Modifier.semantics { text = AnnotatedString("Search apps") }) }, singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = ink,
+                focusedPlaceholderColor = ink.copy(alpha = .7f), unfocusedPlaceholderColor = ink.copy(alpha = .7f),
+                focusedBorderColor = ink.copy(alpha = .55f), unfocusedBorderColor = ink.copy(alpha = .38f),
+                // The drawer is drawn straight onto the wallpaper, so the box itself stays a hole in
+                // it and only its outline is ink.
+                focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent),
+            // The magnifier sits on the right-hand end of the box, where the reference has it, and
+            // the clear affordance takes that same end once there is something to clear. The glyph
+            // itself is described by nothing: it shares the field's node, which already says what
+            // the box is, and a second label on it would only be read out twice.
+            trailingIcon = { if (state.filterString.isEmpty()) Icon(Icons.Filled.Search, null, tint = ink.copy(alpha = .8f), modifier = Modifier.size(22.dp)) else TextButton(onClick = onFilterClearPressed) { Text("Clear", color = ink) } },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(java.util.Locale.getDefault(), "EEEMMMd"), java.util.Locale.getDefault()).format(java.util.Date()),
                 color = ink, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -124,9 +153,6 @@ fun AppListScreen(
                     Text("Start"); Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = ink, modifier = Modifier.size(18.dp))
                 }
         }
-        OutlinedTextField(state.filterString, onFilterTextChanged, placeholder = { Text("Search apps") }, singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = ink, unfocusedTextColor = ink, cursorColor = ink, focusedPlaceholderColor = ink.copy(alpha = .7f), unfocusedPlaceholderColor = ink.copy(alpha = .7f)),
-            trailingIcon = { if (state.filterString.isNotEmpty()) TextButton(onClick = onFilterClearPressed) { Text("Clear") } }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
         if (grouped.isEmpty() && found.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
         // The board and the app list are the only things still competing for height here, and the
         // board is the secondary one, so it is handed a weighted share of what the header, the
@@ -141,8 +167,10 @@ fun AppListScreen(
                 modifier = Modifier.width(32.dp).fillMaxHeight())
             LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
                 grouped.forEach { (letter, apps) ->
-                    item(key = "letter:$letter") { Text(letter, fontSize = if (state.tileSettings.drawerSort == "alphabetical") 30.sp else 14.sp, color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { alphabet = true }.padding(vertical = if (state.tileSettings.drawerSort == "alphabetical") 14.dp else 4.dp, horizontal = 8.dp)) }
+                    // A group header is a caption, not a headline: the reference keeps it small and
+                    // quiet so the app names it introduces stay the loudest thing in the list.
+                    item(key = "letter:$letter") { Text(letter, fontSize = 20.sp, color = ink.copy(alpha = .6f),
+                        modifier = Modifier.clickable { alphabet = true }.padding(top = 10.dp, bottom = 4.dp)) }
                     items(apps, key = { it.packageName }) { app ->
                         var menu by remember { mutableStateOf(false) }
                         val launcher = context.getSystemService(LauncherApps::class.java)
@@ -153,8 +181,13 @@ fun AppListScreen(
                         }
                         Box {
                             Row(Modifier.fillMaxWidth().combinedClickable(onClick = { onAppClicked(app) }, onLongClick = { menu = true }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                AppIconImage(app.icon.iconFile, Modifier.size(48.dp), app.icon.fill)
-                                Text(app.name, color = ink, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp))
+                                // A 56dp square with the name beside it at 28sp: the reference's
+                                // list is a list of names first, and the icon is only a mark beside
+                                // them. The name takes the rest of the row so a long one ellipsises
+                                // instead of pushing the row taller.
+                                AppIconImage(app.icon.iconFile, Modifier.size(56.dp), app.icon.fill)
+                                Text(app.name, color = ink, fontSize = 28.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f).padding(start = 20.dp))
                             }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text("Pin to Start") }, onClick = { menu = false; onAddToGrid(app) })
@@ -172,8 +205,8 @@ fun AppListScreen(
                     }
                 }
                 found.forEach { section ->
-                    item(key = "found:${section.source}") { Text(SearchSource.label(section.source), fontSize = 14.sp, color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(vertical = 4.dp, horizontal = 8.dp)) }
+                    item(key = "found:${section.source}") { Text(SearchSource.label(section.source), fontSize = 20.sp, color = ink.copy(alpha = .6f),
+                        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)) }
                     items(section.rows, key = { "found:${it.id}" }) { row ->
                         SearchResultRow(row, ink) { onSearchRowClicked(row) }
                     }
@@ -231,13 +264,15 @@ private fun keyAt(grouped: Map<String, List<App>>, index: Int): String? {
 /** A person, a notification or a calendar event, drawn like an app row without an icon file. */
 @Composable
 private fun SearchResultRow(row: SearchRow, ink: Color, onClick: () -> Unit) {
+    // The same measure as an app row, because it is read in the same list: same 56dp mark, same
+    // 28sp name, same leading gap.
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-            Text(row.title.take(1).uppercase(), color = ink, fontSize = 20.sp)
+        Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+            Text(row.title.take(1).uppercase(), color = ink, fontSize = 22.sp)
         }
-        Column(Modifier.padding(start = 16.dp).weight(1f)) {
-            Text(row.title, color = ink, fontSize = 20.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            if (row.subtitle.isNotBlank()) Text(row.subtitle, color = ink.copy(alpha = .7f), fontSize = 14.sp,
+        Column(Modifier.padding(start = 20.dp).weight(1f)) {
+            Text(row.title, color = ink, fontSize = 28.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (row.subtitle.isNotBlank()) Text(row.subtitle, color = ink.copy(alpha = .7f), fontSize = 15.sp,
                 maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }

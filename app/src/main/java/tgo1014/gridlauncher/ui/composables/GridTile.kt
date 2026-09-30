@@ -38,7 +38,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -66,6 +65,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -330,17 +330,17 @@ fun GridTile(
                 Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)) { NotificationActions(previewed, compact = true, ink = tileInk) }
             }
             if (builtIn && item.width >= 2) HubGlyph(item.app.packageName, Modifier.align(Alignment.BottomEnd).padding(10.dp).size(16.dp), tileInk)
+            // The reference sets the name on the tile itself, bottom-left, and never centred: the
+            // corner it sits in is the same corner the badge uses, so the label is held clear of
+            // the badge by that badge's own width rather than by a fixed guess.
             if (!tileSettings.isAppLabelsHidden && !isMusic && !item.isGroup) Text(item.app.name, color = tileInk, fontSize = if (expanded) 13.sp else 11.sp, maxLines = 2,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(if (expanded) 10.dp else 3.dp).padding(end = if (matching.isNotEmpty() && tileSettings.showTileCounts) 26.dp else 0.dp))
+                textAlign = TextAlign.Start,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart)
+                    .padding(start = if (expanded) 10.dp else 4.dp, bottom = if (expanded) 10.dp else 3.dp)
+                    .padding(end = if (matching.isNotEmpty() && tileSettings.showTileCounts) badgeInset(matching.size, tileSettings.badgeAsDot, expanded) else 0.dp))
             if (matching.isNotEmpty() && tileSettings.showTileCounts && !item.isGroup) {
-                if (tileSettings.badgeAsDot) Box(Modifier.align(Alignment.BottomEnd).padding(8.dp).size(10.dp)
-                    .clip(CircleShape).background(tileInk)
-                    .semantics { contentDescription = "${matching.size} notifications. Double tap to preview" }
-                    .clickable { showPreview = true })
-                else Text(if (matching.size > 99) "99+" else matching.size.toString(), color = tileInk, fontSize = if (expanded) 24.sp else 16.sp,
-                    modifier = Modifier.align(Alignment.BottomEnd).sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                        .semantics { contentDescription = "${matching.size} notifications. Double tap to preview" }
-                        .clickable { showPreview = true }.padding(6.dp))
+                TileBadge(matching.size, tileSettings.badgeAsDot, expanded, tileInk, { showPreview = true },
+                    Modifier.align(Alignment.BottomEnd))
             }
         }
         if (isKeyboardFocused) {
