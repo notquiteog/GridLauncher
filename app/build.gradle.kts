@@ -19,7 +19,7 @@ android {
         minSdk = 37
         targetSdk = 37
         versionCode = 21000 + (providers.environmentVariable("VERSION_CODE").orNull?.toInt() ?: 0)
-        versionName = "2.7.0"
+        versionName = "2.8.0"
         val distribution = providers.gradleProperty("distributionChannel").orElse("github").get()
         require(distribution in listOf("github", "play"))
         buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"$distribution\"")
