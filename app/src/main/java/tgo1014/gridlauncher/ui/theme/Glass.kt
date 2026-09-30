@@ -170,6 +170,8 @@ fun TileTurn(key: Any?, modifier: Modifier = Modifier, content: @Composable () -
     Box(modifier.graphicsLayer {
         rotationY = flip.value; cameraDistance = 12 * density
         // Past 90 degrees the tile is showing its back, so hide it rather than draw it mirrored.
-        alpha = if (kotlin.math.abs(((flip.value % 360) + 360) % 360 - 180f) > 90f) 0f else 1f
+        // At rest, and at the end of a turn, the angle is a whole turn and the tile faces the user.
+        val turned = ((flip.value % 360) + 360) % 360
+        alpha = if (turned > 90f && turned < 270f) 0f else 1f
     }) { content() }
 }

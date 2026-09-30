@@ -10,11 +10,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
@@ -37,10 +39,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,6 +57,8 @@ import tgo1014.gridlauncher.ui.composables.LaunchedIfTrueEffect
 import tgo1014.gridlauncher.ui.models.GridItem
 import tgo1014.gridlauncher.ui.models.SettingsEvent
 import tgo1014.gridlauncher.ui.models.TileEvent
+import tgo1014.gridlauncher.ui.WindowPosture
+import tgo1014.gridlauncher.ui.postureFor
 import tgo1014.gridlauncher.ui.theme.AsyncImage
 
 @Composable
@@ -147,7 +151,6 @@ private fun HomeScreen(
 ) { Box(Modifier.background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
     // Continuum: a desktop window or large screen gets Start and All apps side by side, the way
     // Continuum gave a phone a desktop-sized shell. Touch layouts keep the single-column pager.
-    val continuum = LocalConfiguration.current.screenWidthDp >= CONTINUUM_WIDTH_DP
     val pagerState = rememberPagerState(initialPage = 0) { 2 }
     val scope = rememberCoroutineScope()
     var pagerWidth by remember { mutableIntStateOf(1) }
@@ -209,13 +212,28 @@ private fun HomeScreen(
             onSearchRowClicked = onSearchRowClicked,
             onBackPressed = { goToPage(0) })
     }
-    if (continuum) {
+    // The posture is read from the window the launcher actually occupies, not from the screen behind
+    // it, so it is the first thing decided and the only thing the two branches below disagree about.
+    // A phone window measures 411dp and takes the pager branch, which is the whole of the old screen
+    // width test with nothing else changed about it.
+    BoxWithConstraints {
+    when (postureFor(maxWidth)) {
+    WindowPosture.Expanded ->
+        // Split down the middle, which is where a foldable's hinge runs, so the divider lands on the
+        // seam rather than through a pane. Neither side is weighted: an off-centre seam would put
+        // the hinge inside the app list on one foldable and inside Start on the next.
         Row(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxHeight().weight(0.46f)) { start(false) }
+            // Start runs its tiles out to the pane edge on a phone, and it still does on the left
+            // here, but the seam end is held back. The app list keeps 20dp of its own on both sides,
+            // so without this the tiles would end up hard against the divider while the list stood
+            // well off it - and the divider is exactly where the hardware gap is, which is not a
+            // place to leave a tile's edge. Nothing here knows how wide that gap really is; see
+            // postureFor.
+            Box(Modifier.fillMaxHeight().weight(0.5f).padding(end = PANE_GUTTER)) { start(false) }
             VerticalDivider(color = glassColor(state))
-            Box(Modifier.fillMaxHeight().weight(0.54f)) { allApps() }
+            Box(Modifier.fillMaxHeight().weight(0.5f)) { allApps() }
         }
-    } else {
+    WindowPosture.Compact ->
     HorizontalPager(
         state = pagerState,
         flingBehavior = PagerDefaults.flingBehavior(state = pagerState, pagerSnapDistance = PagerSnapDistance.atMost(2)),
@@ -232,6 +250,7 @@ private fun HomeScreen(
         }
     }
     }
+    }
     tgo1014.gridlauncher.ui.composables.sheets.SettingsBottomSheet(
         tileSettings = state.tileSettings, isShowing = state.isSettingsSheetShowing,
         onSettingsEvent = onSettingsEvent, apps = state.appList, onAddApp = onAddToGrid,
@@ -241,8 +260,10 @@ private fun HomeScreen(
 
 } }
 
-private const val CONTINUUM_WIDTH_DP = 840
 private fun glassColor(state: HomeState) = if (state.tileSettings.darkTheme) Color.White.copy(alpha = .12f) else Color.Black.copy(alpha = .12f)
+
+/** What the expanded layout holds Start back from the divider, matched to the app list's own inset. */
+private val PANE_GUTTER = 20.dp
 
 /** How far back Start sits, as a share of the screen, once the app list owns it. */
 private const val REVEAL_SHIFT = 0.09f
