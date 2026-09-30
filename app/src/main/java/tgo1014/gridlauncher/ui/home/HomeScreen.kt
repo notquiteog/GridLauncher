@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerSnapDistance
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -157,6 +159,13 @@ private fun HomeScreen(
     LaunchedIfTrueEffect(state.goToHome) {
         pagerState.scrollToPage(0)
     }
+    // Windows Phone's pages move, but they do not move when the user has asked for no animation.
+    // animateScrollToPage runs on the frame clock and never consults the system animation scale, so
+    // the choice has to be made here: with motion off the pager lands on the other page at once and
+    // the reveal below has nothing to ride.
+    fun goToPage(page: Int) = scope.launch {
+        if (glass.motion) pagerState.animateScrollToPage(page) else pagerState.scrollToPage(page)
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedIfTrueEffect(pagerState.settledPage == 0) {
         onHome()
@@ -184,18 +193,18 @@ private fun HomeScreen(
             onItemDropped = onItemDropped, onItemLongClicked = onItemLongClicked, onTileEvent = onTileEvent,
             onEditLayout = onEditLayout, showAllAppsLink = showFooter, onHandoffFocusHandled = onHandoffFocusHandled,
             onOpenApp = onAppClicked, onFolderChanged = onFolderChanged,
-            onFooterClicked = { scope.launch { pagerState.animateScrollToPage(1) } })
+            onFooterClicked = { goToPage(1) })
     }
     val allApps: @Composable () -> Unit = {
         AppListScreen(state = state, hazeState = hazeState, onAppClicked = onAppClicked, onAddToGrid = onAddToGrid, onPinToHotseat = onPinToHotseat,
             onFilterTextChanged = onFilterTextChanged, onFilterClearPressed = onFilterClearPressed,
             onUninstall = onUninstall, onSettingsEvent = onSettingsEvent,
-            onEditLayout = { editing -> onEditLayout(editing); scope.launch { pagerState.animateScrollToPage(0) } },
-            onProfile = { name -> onProfile(name); scope.launch { pagerState.animateScrollToPage(0) } },
-            onCreateLayout = { name, copy -> onCreateLayout(name, copy); scope.launch { pagerState.animateScrollToPage(0) } },
+            onEditLayout = { editing -> onEditLayout(editing); goToPage(0) },
+            onProfile = { name -> onProfile(name); goToPage(0) },
+            onCreateLayout = { name, copy -> onCreateLayout(name, copy); goToPage(0) },
             onRenameLayout = onRenameLayout, onDeleteLayout = onDeleteLayout,
             onSearchRowClicked = onSearchRowClicked,
-            onBackPressed = { scope.launch { pagerState.animateScrollToPage(0) } })
+            onBackPressed = { goToPage(0) })
     }
     if (continuum) {
         Row(Modifier.fillMaxSize()) {
@@ -213,7 +222,7 @@ private fun HomeScreen(
             .onSizeChanged { pagerWidth = it.width }
     ) {
         when (it) {
-            0 -> start(true)
+            0 -> Box(Modifier.fillMaxSize().startReveal(pagerState, glass.motion, pagerWidth)) { start(true) }
             1 -> allApps()
         }
     }
@@ -229,3 +238,33 @@ private fun HomeScreen(
 
 private const val CONTINUUM_WIDTH_DP = 840
 private fun glassColor(state: HomeState) = if (state.tileSettings.darkTheme) Color.White.copy(alpha = .12f) else Color.Black.copy(alpha = .12f)
+
+/** How far back Start sits, as a share of the screen, once the app list owns it. */
+private const val REVEAL_SHIFT = 0.09f
+/** How far it is scaled down on the way out, which is what gives the return its settle. */
+private const val REVEAL_SCALE = 0.05f
+
+/**
+ * Windows Phone's way back to Start: the tile pane does not simply appear, it comes in from a
+ * little to one side and slightly small and settles onto the screen as the app list pans away.
+ *
+ * The offset is read straight off the pager's own position, so the reveal is a pure function of
+ * where the pager already is: there is no second animation to start, cancel or fight, nothing is
+ * written back into the pager's state, and no frame allocates. Scrolling inside Start cannot start
+ * it, because only the pager's page position feeds it, and at rest on Start the numbers land on an
+ * exact identity so a launcher left sitting there draws no transform at all.
+ *
+ * With motion off the layer stays at its default identity and the pager is told to snap, so the
+ * transition is one frame rather than a fast one.
+ */
+private fun Modifier.startReveal(pager: PagerState, motion: Boolean, pagerWidth: Int): Modifier =
+    graphicsLayer {
+        if (!motion) return@graphicsLayer
+        // Zero on Start, one on the drawer, and whatever lies between while a page is in motion, so
+        // the pane lags the drag and then catches up with it.
+        val away = (pager.currentPage + pager.currentPageOffsetFraction).coerceIn(0f, 1f)
+        translationX = REVEAL_SHIFT * pagerWidth * away
+        val scale = 1f - REVEAL_SCALE * away
+        scaleX = scale
+        scaleY = scale
+    }

@@ -36,7 +36,7 @@ fun TileLayout(
     // A drill-down path, so a folder can hold another folder.
     var openPath by remember(profile) { mutableStateOf<List<GridItem>>(emptyList()) }
     val folder = openPath.lastOrNull()?.takeIf { it.childCount > 0 }
-    val contents = folder?.let { it.children.map { child -> GridItem(-1_000_000 - child.packageName.hashCode(), child, 1) } + it.childFolders } ?: emptyList()
+    val contents = folder?.let { it.children.map { child -> filedTile(child) } + it.childFolders } ?: emptyList()
     // Choose a row boundary no tile crosses, preserving every saved grid coordinate.
     val boundary = remember(grid, folder?.id) {
         var edge = folder?.let { it.y + it.height } ?: Int.MAX_VALUE

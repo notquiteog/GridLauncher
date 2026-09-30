@@ -100,6 +100,12 @@ fun GridTile(
     item: GridItem, hazeState: HazeState? = null, onFolder: ((GridItem) -> Unit)? = null, modifier: Modifier = Modifier, tileSettings: TileSettings = TileSettings(),
     isEditMode: Boolean = false, onItemDropped: (GridItem, Float, Float) -> Unit = { _, _, _ -> }, onItemClicked: (GridItem) -> Unit = {}, onItemLongClicked: (GridItem) -> Unit = {},
     isKeyboardFocused: Boolean = false, onFocus: () -> Unit = {},
+    /**
+     * Set only when this tile is being drawn magnified inside [TilePeek]. It is what turns every
+     * gesture into a gesture on the peek: a tap does nothing, a long press does nothing, and a
+     * double tap puts the tile back the way it was.
+     */
+    peekDismiss: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val glass = LocalGlass.current
@@ -114,6 +120,8 @@ fun GridTile(
     else tgo1014.gridlauncher.ui.theme.readableInk(tileColor)
     var showNativeActions by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
+    var showPeek by remember { mutableStateOf(false) }
+    var showJumpList by remember { mutableStateOf(false) }
     var showPeople by remember { mutableStateOf(false) }
     var people by remember(item) { mutableStateOf(item.contacts.ifEmpty { listOfNotNull(item.contact) }) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -143,6 +151,15 @@ fun GridTile(
     val hub = if (item.app.packageName == BuiltInTiles.PEOPLE) showHub else showPeople
     val nowPlaying by MediaTiles.now.collectAsStateWithLifecycle()
     val isHub = BuiltInTiles.isHub(item.app.packageName)
+    // A double tap magnifies the tile, the Windows Phone second state, but only a tile that has
+    // something live to magnify, and only one that is already allowed to show it: everything in
+    // here is an answer the tile has already reached for itself, and edit mode is not a place to
+    // start navigating from.
+    val peekable = PeekVisibility(
+        liveTiles = tileSettings.liveTilesEnabled, hub = isHub, group = item.isGroup, widget = item.widgetId >= 0,
+        locked = locked, quiet = glass.quiet, previewsHidden = item.app.packageName in tileSettings.hiddenPreviewApps,
+        notification = matching.isNotEmpty(), call = call != null, people = people.isNotEmpty(), photos = photoSource.isNotEmpty(),
+    ).peekable() && !isEditMode && peekDismiss == null
     LaunchedEffect(item.app.packageName, tileSettings.liveTilesEnabled, tileSettings.isTileFlipEnabled, glass.motion, permissionRevision) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             // Stagger by tile so a full screen of tiles does not all refresh in the same frame.
@@ -212,9 +229,15 @@ fun GridTile(
             }
         }
         .onFocusChanged { if (it.isFocused) onFocus() }
-        .semantics { contentDescription = if (call != null) call.describe() else item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = listOf(CustomAccessibilityAction(if (isEditMode) "Edit tile" else "App shortcuts") { if (isEditMode) onItemLongClicked(item) else showNativeActions = true; true }, CustomAccessibilityAction("Preview notifications") { showPreview = true; true }) }
+        .semantics { contentDescription = if (call != null) call.describe() else item.app.name + if (matching.isNotEmpty()) ", ${matching.size} notifications" else ""; customActions = if (peekDismiss != null) listOf(CustomAccessibilityAction("Close peek") { peekDismiss(); true }) else listOf(CustomAccessibilityAction(if (isEditMode) "Edit tile" else "App shortcuts") { if (isEditMode) onItemLongClicked(item) else showNativeActions = true; true }, CustomAccessibilityAction("Preview notifications") { showPreview = true; true }) + if (peekable) listOf(CustomAccessibilityAction("Peek tile") { showPeek = true; true }) else emptyList() }
         .focusable()
-        .combinedClickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = { if (isEditMode) onItemClicked(item) else open() }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); if (isEditMode) onItemLongClicked(item) else showNativeActions = true })) {
+        .combinedClickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(),
+            onClick = { if (peekDismiss == null) { if (isEditMode) onItemClicked(item) else open() } },
+            onLongClick = { if (peekDismiss == null) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); if (isEditMode) onItemLongClicked(item) else if (item.childCount > 0) showJumpList = true else showNativeActions = true } },
+            // Passed as nothing at all on a tile that cannot peek, which is what lets a plain tap
+            // through untouched: a double click handler of any kind, even one that opens the tile,
+            // would hold that tap back until the double tap timeout expired.
+            onDoubleClick = if (peekDismiss != null) ({ peekDismiss() }) else if (peekable) ({ showPeek = true }) else null)) {
         if (item.isGroup) {
             Text(item.groupLabel.ifBlank { item.app.name }, color = tileInk, fontSize = 13.sp,
                 fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -330,8 +353,14 @@ fun GridTile(
             if (item.positionPinned) Text("Pinned", color = Color.White, fontSize = 11.sp, modifier = Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = .6f)).padding(3.dp))
         }
         NativeTileActions(item, showNativeActions, { showNativeActions = false }, { open() })
+        if (showJumpList) FolderJumpList(item, onOpen = { app -> onItemClicked(filedTile(app)) },
+            // The drill-down the layout already owns, so a jump list and an inline expansion land in
+            // the same place, nested folders included.
+            onOpenFolder = { folder -> if (onFolder != null) onFolder(folder) else showFolder = true },
+            onDismiss = { showJumpList = false })
     }
     if (showPreview) NotificationPreview(item.app.name, (item.children.map { it.packageName } + item.app.packageName + matching.map { it.packageName }).toSet(), { showPreview = false })
+    if (showPeek) TilePeek(item, tileSettings, { showPeek = false })
     if (showPeople) PeoplePreview(people, { showPeople = false })
     if (showHub) PeopleHub(people, { showHub = false })
     if (showFolder) AlertDialog(onDismissRequest = { showFolder = false }, title = { Text(item.app.name) },
@@ -378,7 +407,7 @@ private fun TileGlyph(glyph: String, ink: Color, description: String, prominent:
 
 /** The designed mark a hub tile carries, so a live tile never looks like a plain app icon. */
 @Composable
-private fun HubGlyph(id: String, modifier: Modifier, ink: Color) {
+fun HubGlyph(id: String, modifier: Modifier, ink: Color) {
     if (modifier != Modifier) {
         Box(modifier) { Icon(painterResource(BuiltInTiles.glyph(id)), null, tint = ink, modifier = Modifier.fillMaxSize()) }
     } else {

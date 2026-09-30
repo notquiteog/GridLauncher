@@ -33,6 +33,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import tgo1014.gridlauncher.domain.models.App
+import tgo1014.gridlauncher.domain.models.IconShape
 import tgo1014.gridlauncher.domain.models.TileSettings
 import tgo1014.gridlauncher.live.BuiltInTiles
 import tgo1014.gridlauncher.ui.MainActivity
@@ -120,6 +121,15 @@ fun SettingsBottomSheet(
             Text("Hides the status and navigation bars. Android brings them back with a swipe from the edge.", style = MaterialTheme.typography.bodySmall)
             SettingSwitch("Tinted icons", tileSettings.iconTint) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(iconTint = it))) }
             Text("Renders every app icon in one flat color, drawn by the launcher from its own cache.", style = MaterialTheme.typography.bodySmall)
+            Text("Icon shape", style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                IconShape.entries.forEach { shape ->
+                    FilterChip(selected = tileSettings.iconShape == shape.key,
+                        onClick = { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(iconShape = shape.key))) },
+                        label = { Text(shape.label) })
+                }
+            }
+            Text("Masks the app icon only. The tile itself stays a flat square, edge to edge, and photos, widgets and hub marks are never masked.", style = MaterialTheme.typography.bodySmall)
             SettingSwitch("Hotseat", tileSettings.hotseat.isNotEmpty()) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(hotseat = if (it) apps.take(4).map { app -> app.packageName } else emptyList()))) }
             if (tileSettings.hotseat.isNotEmpty()) {
                 Text("The hotseat holds ${tileSettings.hotseat.size} of 4 apps at the foot of Start, outside the tile grid. Use the + on a frequent app to add it.")

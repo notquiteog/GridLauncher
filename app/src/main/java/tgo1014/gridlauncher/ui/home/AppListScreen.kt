@@ -41,7 +41,7 @@ import tgo1014.gridlauncher.live.SearchSource
 import tgo1014.gridlauncher.live.StartSearch
 import tgo1014.gridlauncher.ui.composables.JumpRail
 import tgo1014.gridlauncher.ui.composables.jumpLetterOf
-import tgo1014.gridlauncher.ui.theme.AsyncImage
+import tgo1014.gridlauncher.ui.theme.AppIconImage
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -126,7 +126,7 @@ fun AppListScreen(
                         }
                         Box {
                             Row(Modifier.fillMaxWidth().combinedClickable(onClick = { onAppClicked(app) }, onLongClick = { menu = true }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                AsyncImage(app.icon.iconFile, Modifier.size(48.dp))
+                                AppIconImage(app.icon.iconFile, Modifier.size(48.dp), app.icon.fill)
                                 Text(app.name, color = ink, fontSize = 20.sp, modifier = Modifier.padding(start = 16.dp))
                             }
                             DropdownMenu(menu, { menu = false }) {

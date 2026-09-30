@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -25,7 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import tgo1014.gridlauncher.domain.models.App
-import tgo1014.gridlauncher.ui.theme.AsyncImage
+import tgo1014.gridlauncher.ui.theme.AppIconImage
 import tgo1014.gridlauncher.ui.theme.LocalGlass
 import tgo1014.gridlauncher.ui.theme.glassSurface
 
@@ -45,9 +44,12 @@ fun Hotseat(
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             resolved.forEach { app ->
-                Box(Modifier.size(56.dp).clip(CircleShape).clickable { onOpen(app) }
+                // The slot is the tap target and nothing more: clipping it to a circle here would
+                // pin these four icons to a shape the setting never chose. The artwork is masked by
+                // the one place every app icon is masked, so hotseat and tile agree.
+                Box(Modifier.size(56.dp).clickable { onOpen(app) }
                     .semantics { contentDescription = "Hotseat ${app.name}" }, contentAlignment = Alignment.Center) {
-                    AsyncImage(app.icon.iconFile, Modifier.size(48.dp).clip(CircleShape))
+                    AppIconImage(app.icon.iconFile, Modifier.size(48.dp), app.icon.fill)
                 }
             }
             repeat(slots - resolved.size) { Spacer(Modifier.size(56.dp)) }
@@ -69,7 +71,7 @@ fun FrequentRow(apps: List<App>, frequent: List<String>, sort: String, onOpen: (
             items(suggestions, key = { it.packageName }) { app ->
                 Column(Modifier.width(72.dp).clickable { onOpen(app) }, horizontalAlignment = Alignment.CenterHorizontally) {
                     Box {
-                        AsyncImage(app.icon.iconFile, Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)))
+                        AppIconImage(app.icon.iconFile, Modifier.size(52.dp), app.icon.fill)
                         Box(Modifier.align(Alignment.TopEnd).size(20.dp).clip(CircleShape)
                             .background(Color.Black.copy(alpha = .45f)).border(1.dp, Color.White.copy(alpha = .4f), CircleShape)
                             .clickable { onPin(app) }, contentAlignment = Alignment.Center) {

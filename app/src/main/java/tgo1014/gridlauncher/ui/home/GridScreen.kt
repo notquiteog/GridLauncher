@@ -21,6 +21,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.chrisbanes.haze.HazeState
@@ -109,13 +113,28 @@ fun GridScreenScreen(
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
             Hotseat(state.appList, state.tileSettings.hotseat, onOpenApp)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (QuietHours.active(state.tileSettings)) {
-                    Text("Quiet", color = glass.accent, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
+                // Windows Phone put the way into the app list at the bottom left of Start, and left
+                // it as a bare arrow with nothing written beside it. So the name is carried by the
+                // button's semantics rather than drawn next to it: a content description is what
+                // TalkBack reads, and the text property is what anything matching this button by
+                // name - the device tests among them - already looks for.
+                if (showAllAppsLink) IconButton(
+                    onClick = onFooterClicked,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "All apps"
+                            text = AnnotatedString("All apps")
+                        },
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = glass.ink, modifier = Modifier.size(22.dp))
                 }
-                if (showAllAppsLink) TextButton(onClick = onFooterClicked, modifier = Modifier.weight(1f)) {
-                    Text("All apps", color = glass.ink, fontSize = 14.sp)
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = glass.ink, modifier = Modifier.size(18.dp))
-                } else Spacer(Modifier.weight(1f))
+                Spacer(Modifier.weight(1f))
+                // Quiet is a state of the launcher, not a label for the arrow, so it sits at the end
+                // of the row and keeps the leading corner to the one control Windows Phone put there.
+                if (QuietHours.active(state.tileSettings)) {
+                    Text("Quiet", color = glass.accent, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
+                }
             }
         }
     }

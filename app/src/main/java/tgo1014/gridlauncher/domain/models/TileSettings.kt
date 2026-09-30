@@ -28,6 +28,9 @@ data class TileSettings(
     /** A1Z26, most used, or recently used. */
     val drawerSort: String = "alphabetical",
     val iconTint: Boolean = false,
+    /** One of [IconShape]'s keys. Full bleed is the default because it is what the launcher has
+     * always drawn: Windows Phone filled its tiles edge to edge, and so do we. */
+    val iconShape: String = IconShape.BLEED.key,
     val fullscreen: Boolean = false,
     /** Windows Phone could show a bare dot instead of a count. */
     val badgeAsDot: Boolean = false,
@@ -50,9 +53,37 @@ data class TileSettings(
 
     val gridColumns: Int get() = tilesAcross.coerceIn(2, 6)
 
+    /** The icon mask as a value, never as a raw string. */
+    val iconMask: IconShape get() = IconShape.of(iconShape)
+
     val wallpaperFile: File?
         get() = wallpaperPath?.let { File(it) }
 
     val isTransparencyEnabled: Boolean
         get() = true
+}
+
+/**
+ * The launcher-wide shape of an app icon, applied in the one place every icon is drawn.
+ *
+ * This is the icon, never the tile: the tile stays a flat square reaching its own corners, which is
+ * the launcher's identity. [BLEED] is first because it is the look this launcher shipped with.
+ */
+enum class IconShape(val key: String, val label: String) {
+    BLEED("bleed", "Full bleed"),
+    ROUNDED("rounded", "Rounded square"),
+    CIRCLE("circle", "Circle"),
+    SQUIRCLE("squircle", "Squircle"),
+    ;
+
+    /** Whether this shape clips anything at all. Full bleed is exactly what was drawn before. */
+    val masks: Boolean get() = this != BLEED
+
+    companion object {
+        /**
+         * A key this build does not know - an older or newer pack, a hand-edited value - falls back
+         * to the look that is already on screen, so a bad value can never blank the icons.
+         */
+        fun of(key: String) = entries.firstOrNull { it.key == key } ?: BLEED
+    }
 }
