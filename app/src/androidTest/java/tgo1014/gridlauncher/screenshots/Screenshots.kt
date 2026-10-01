@@ -316,25 +316,23 @@ object Screenshots {
     ) {
         val activity = compose.activity as MainActivity
         settle(compose, wallpaper, settings)
-        // Enumerating every installed package on a cold emulator can take seconds, and on a busy
-        // runner it can miss a twenty second window and leave the list empty. Ask again rather than
-        // fail on a machine that is merely slow.
-        val settingsApp = runBlocking {
-            var found: App? = null
+        // Waiting for one particular package is the wrong signal. On a cold emulator the whole list
+        // arrives late, and a scene that starts by asking for Settings specifically reports an empty
+        // list as if Settings were missing from it. So wait for the list to have anything in it, and
+        // only then insist on the one package whose icon the scene draws.
+        val installed = runBlocking {
+            var apps: List<App> = emptyList()
             for (attempt in 0 until 5) {
                 activity.updateAppListUseCase()
-                found = withTimeoutOrNull(8_000) {
-                    activity.appsManager.installedAppsFlow
-                        .first { apps -> apps.any { app -> app.packageName == "com.android.settings" } }
-                        .first { it.packageName == "com.android.settings" }
-                }
-                if (found != null) break
+                apps = withTimeoutOrNull(15_000) {
+                    activity.appsManager.installedAppsFlow.first { it.isNotEmpty() }
+                } ?: emptyList()
+                if (apps.any { it.packageName == "com.android.settings" }) break
             }
-            found
-        } ?: run {
-            val seen = runBlocking { activity.appsManager.installedAppsFlow.first() }.map { it.packageName }
-            error("com.android.settings never reached the installed list after five attempts; saw ${seen.size}: ${seen.take(12)}")
+            apps
         }
+        val settingsApp = installed.firstOrNull { it.packageName == "com.android.settings" }
+            ?: error("com.android.settings never reached the installed list after five attempts; saw ${installed.size}: ${installed.take(12)}")
         seed(compose, stableGrid(settingsApp), settings, wallpaper)
         awaitLiveContent(compose)
     }
