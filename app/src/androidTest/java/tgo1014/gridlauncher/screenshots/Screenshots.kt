@@ -316,16 +316,24 @@ object Screenshots {
     ) {
         val activity = compose.activity as MainActivity
         settle(compose, wallpaper, settings)
-        runBlocking { activity.updateAppListUseCase() }
+        // Enumerating every installed package on a cold emulator can take seconds, and on a busy
+        // runner it can miss a twenty second window and leave the list empty. Ask again rather than
+        // fail on a machine that is merely slow.
         val settingsApp = runBlocking {
-            withTimeoutOrNull(20000) {
-                activity.appsManager.installedAppsFlow
-                    .first { apps -> apps.any { it.packageName == "com.android.settings" } }
-                    .first { it.packageName == "com.android.settings" }
+            var found: App? = null
+            for (attempt in 0 until 5) {
+                activity.updateAppListUseCase()
+                found = withTimeoutOrNull(8_000) {
+                    activity.appsManager.installedAppsFlow
+                        .first { apps -> apps.any { app -> app.packageName == "com.android.settings" } }
+                        .first { it.packageName == "com.android.settings" }
+                }
+                if (found != null) break
             }
+            found
         } ?: run {
             val seen = runBlocking { activity.appsManager.installedAppsFlow.first() }.map { it.packageName }
-            error("com.android.settings never reached the installed list; saw ${seen.size}: ${seen.take(12)}")
+            error("com.android.settings never reached the installed list after five attempts; saw ${seen.size}: ${seen.take(12)}")
         }
         seed(compose, stableGrid(settingsApp), settings, wallpaper)
         awaitLiveContent(compose)
