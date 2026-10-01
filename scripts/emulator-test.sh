@@ -26,6 +26,12 @@ adb shell settings put system time_12_24 24
 # left them hidden on a previous run must not decide this one.
 adb shell settings put global policy_control null
 # Shell-owned, because the app under test is uninstalled - and its storage deleted - when a run ends.
+# A display cutout is 24dp of extra inset at the top of the frame, and whether one is emulated is a
+# property of the emulator image rather than of anything being tested. Two machines on the same image
+# build disagreed by exactly that band. Pin it off.
+for cutout in corner double hole tall emu01 waterfall; do
+  adb shell cmd overlay disable "com.android.internal.display.cutout.emulation.$cutout" || true
+done
 adb shell mkdir -p /data/local/tmp/grid-screenshots
 adb shell rm -f /data/local/tmp/grid-screenshots/*.png
 # The expanded scenes cannot run at phone width, and a JUnit assumption is reported as a failure by
