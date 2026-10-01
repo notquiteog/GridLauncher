@@ -172,7 +172,9 @@ scripts/screenshot-baselines.sh verify   # compare, on an emulator identical to 
 scripts/screenshot-baselines.sh record   # re-record into src/androidTest/assets
 ```
 
-Baselines live in `app/src/androidTest/assets/screenshots/`. A **missing baseline is a failure, never a silent record** — a baseline nobody reviewed is not evidence of anything. Re-recording is deliberately a pull request: run the workflow with the `update_screenshots` input and CI records on the runner that will compare, then opens a PR for a human to read the image diffs. Two machines can disagree about an antialiasing pixel, which is why the authoritative baseline is the one the runner recorded.
+Baselines live in `app/src/androidTest/assets/screenshots/`, each beside a small record of the display it was taken under — cutout inset, status-bar inset, size. That record is why a scene is only ever compared when the display matches: an emulator's device definition decides whether a display cutout is emulated, and whether the status bar is shown, and both are worth real pixels across the whole frame. So the comparison asks "is this the same picture under the same conditions" rather than assuming one machine's answer.
+
+A **missing baseline is a failure, never a silent record** — a baseline nobody reviewed is not evidence of anything. Re-recording is deliberately a pull request: run the workflow with the `update_screenshots` input and the runner records on the machine that will then compare, and puts a compare link in the run summary. That is also why the baselines in the repository were recorded on the runner rather than on a contributor's laptop: the same system image renders differently on each, and a baseline is only authoritative where it is compared.
 
 **What this still cannot see.** Three things are deliberately not photographed, for the same reason each time: a scene that fails for a reason unrelated to the launcher is worse than a missing scene, because the only way to green it is to re-record, and a baseline people re-record without reading protects nothing.
 

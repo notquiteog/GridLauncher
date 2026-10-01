@@ -234,24 +234,29 @@ object Screenshots {
      * from the recorder and a display that changes its mind halfway through a run.
      */
     private fun awaitBaselineDisplay(compose: AndroidComposeTestRule<*, out ComponentActivity>, expected: Display) {
-        val deadline = System.currentTimeMillis() + 20_000
+        val deadline = System.currentTimeMillis() + 30_000
         var found = readDisplay(compose)
-        while (found.cutoutTop != expected.cutoutTop && System.currentTimeMillis() < deadline) {
+        while (!found.matches(expected) && System.currentTimeMillis() < deadline) {
             Thread.sleep(250)
             found = readDisplay(compose)
         }
-        if (found.cutoutTop != expected.cutoutTop) {
+        if (!found.matches(expected)) {
             throw AssertionError(
-                "this display has a cutout inset of ${found.cutoutTop}px at the top; the baseline was " +
-                    "recorded with ${expected.cutoutTop}px, and it stayed that way for 20 seconds. " +
-                    "Photographing it anyway would report a regression that is not one. " +
+                "the display does not match the conditions this baseline was recorded under, and it " +
+                    "stayed that way for 30 seconds. Cutout inset: baseline ${expected.cutoutTop}px, " +
+                    "now ${found.cutoutTop}px. Status bar inset: baseline ${expected.systemBarsTop}px, " +
+                    "now ${found.systemBarsTop}px. Either is worth real pixels across the whole frame, " +
+                    "so capturing it anyway would report a regression that is not one. " +
                     "${insetsOf(compose.activity as MainActivity)}"
             )
         }
     }
 
     /** What the display looked like at capture time. Recorded beside every baseline. */
-    data class Display(val cutoutTop: Int, val systemBarsTop: Int, val width: Int, val height: Int)
+    data class Display(val cutoutTop: Int, val systemBarsTop: Int, val width: Int, val height: Int) {
+        /** Only the insets matter for comparability; the size is already checked against the image. */
+        fun matches(other: Display) = cutoutTop == other.cutoutTop && systemBarsTop == other.systemBarsTop
+    }
 
     private fun readDisplay(compose: AndroidComposeTestRule<*, out ComponentActivity>): Display {
         val insets = (compose.activity as MainActivity).window.decorView.rootWindowInsets
