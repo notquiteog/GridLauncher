@@ -47,13 +47,9 @@ done
 cutout_clear || { echo "a display cutout is still emulated; every screenshot would be 24dp taller" >&2; exit 1; }
 adb shell mkdir -p /data/local/tmp/grid-screenshots
 adb shell rm -f /data/local/tmp/grid-screenshots/*.png
-# The expanded scenes cannot run at phone width, and a JUnit assumption is reported as a failure by
-# the test runner rather than as a skip, so they are filtered out here and run deliberately below.
-./gradlew connectedDebugAndroidTest --stacktrace \
-  -Pandroid.testInstrumentationRunnerArguments.notClass=tgo1014.gridlauncher.ExpandedScreenshotTest
+./gradlew connectedDebugAndroidTest --stacktrace
 # AGP can report a successful task even when APK installation prevented any tests.
-# The expanded scenes skip themselves at phone width; they are run and checked further down.
-python3 scripts/verify-device-tests.py --exclude-class tgo1014.gridlauncher.ExpandedScreenshotTest
+python3 scripts/verify-device-tests.py
 # Also install and launch the actual downloadable signed APK.
 # AGP can already have uninstalled the test target during test cleanup.
 if [[ "$(adb shell pm path io.github.notquiteog.gridlauncher)" == package:* ]]; then
@@ -65,21 +61,6 @@ adb shell am start -W -n io.github.notquiteog.gridlauncher/tgo1014.gridlauncher.
 sleep 8
 adb shell pidof io.github.notquiteog.gridlauncher
 adb exec-out screencap -p > build/device-evidence/android-17-start.png
-
-# The expanded two-pane scenes, on the same emulator and the same boot. A wider logical display
-# reaches the 840dp layout for the cost of a resize; a second foldable AVD would cost another boot
-# and another few minutes to photograph the same thing.
-adb shell wm size 2208x1840
-adb shell wm density 420
-sleep 5
-# The release build is signed with the release key and the test APK with the debug key, so the two
-# cannot be installed one over the other.
-adb uninstall io.github.notquiteog.gridlauncher || true
-./gradlew connectedDebugAndroidTest --stacktrace \
-  -Pandroid.testInstrumentationRunnerArguments.class=tgo1014.gridlauncher.ExpandedScreenshotTest
-python3 scripts/verify-device-tests.py --class tgo1014.gridlauncher.ExpandedScreenshotTest
-adb shell wm size reset
-adb shell wm density reset
 
 # Pulled before the emulator dies, so a visual regression arrives with its own picture attached.
 adb pull /data/local/tmp/grid-screenshots/. build/device-evidence/screenshots

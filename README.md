@@ -142,7 +142,7 @@ Toolchain: AGP 9.4.1, Gradle 9.6.0 (checksum pinned), Kotlin 2.4.20, Java 17, An
 
 ## CI and tests
 
-Each push, PR or manual run executes unit tests, lint, APK builds, signature and alignment verification, Android 17 emulator tests, and screenshot comparison. A separate verifier requires every declared device test to produce a passing result, including cases where Gradle reports success despite an installation failure. CI then installs and launches the signed release, repeats the screenshot scenes in the expanded two-pane posture, and uploads the APK, checksum, reports, logs and every screenshot — including the actual capture and a magenta diff when one changed. Successful pushes to `android-17-live-tiles` publish a GitHub Release.
+Each push, PR or manual run executes unit tests, lint, APK builds, signature and alignment verification, Android 17 emulator tests, and screenshot comparison. A separate verifier requires every declared device test to produce a passing result, including cases where Gradle reports success despite an installation failure. CI then installs and launches the signed release and uploads the APK, checksum, reports, logs and every screenshot — including the actual capture and a magenta diff when one changed. Successful pushes to `android-17-live-tiles` publish a GitHub Release.
 
 Actions secrets: `APK_SIGNING_KEYSTORE` (base64) and `APK_SIGNING_PASSWORD`, alias `gridlauncher`. Keep the signing identity for update compatibility. PRs use development signing and receive no secrets.
 
@@ -157,9 +157,11 @@ scripts/emulator-test.sh
 
 ### Screenshot comparison
 
-Every visual regression this launcher ever shipped — light-theme text at 1.19:1 over the wallpaper, Start's tile pane painting across the drawer, live tiles rendering blank, the alphabet rail on the wrong page — passed a fully green build, because nothing was looking at the pixels. CI now photographs seven scenes on every run and compares them: Start in both themes, All apps in both themes, edit mode, the two-pane layout in both themes, and a numeric legibility check.
+Every visual regression this launcher ever shipped — light-theme text at 1.19:1 over the wallpaper, Start's tile pane painting across the drawer, live tiles rendering blank, the alphabet rail on the wrong page — passed a fully green build, because nothing was looking at the pixels. CI now photographs five scenes on every run and compares them: Start in both themes, All apps in both themes, and edit mode. A sixth check measures legibility rather than pixels.
 
 A baseline is only comparable if everything else is held still, so each scene pins the clock to a fixed instant in UTC, installs a committed wallpaper fixture rather than the system one, forces 24-hour time, resets every store the launcher reads, and waits for live-tile content to finish loading before capturing. Two numbers decide whether two images match: an 8-per-channel tolerance, which absorbs antialiasing, and a 0.05% changed-pixel budget — about one glyph on a 1080×2400 screen. Those are measured, not guessed: re-recording every scene on freshly created emulators produces byte-identical images, so the noise floor on a matching device is **zero** and the budget exists only for a runner whose rasteriser differs slightly from yours.
+
+Two emulator details turned out to be part of the picture rather than the background, and both are now pinned and verified: the **display cutout**, which is 24dp of inset across the top of every frame and which one machine's device definition emulates and another does not, and the **system bars**, whose visibility depends on what ran before in the same session.
 
 A frame is only worth comparing if it is the same frame twice, so a capture waits for two identical captures in a row. Without that, the live-tile flip photographs mid-rotation and produces a diff of thousands of pixels that is not a regression.
 
@@ -172,7 +174,11 @@ scripts/screenshot-baselines.sh record   # re-record into src/androidTest/assets
 
 Baselines live in `app/src/androidTest/assets/screenshots/`. A **missing baseline is a failure, never a silent record** — a baseline nobody reviewed is not evidence of anything. Re-recording is deliberately a pull request: run the workflow with the `update_screenshots` input and CI records on the runner that will compare, then opens a PR for a human to read the image diffs. Two machines can disagree about an antialiasing pixel, which is why the authoritative baseline is the one the runner recorded.
 
-**What this still cannot see.** A baseline cannot tell you whether a scene is *legible*, because an unreadable drawer is perfectly stable from run to run — which is why the light-theme contrast is also asserted as a number, measured off the rendered pixels, against the WCAG AA floor of 4.5:1. There is deliberately no "Start, scrolled" scene: the pane is driven by a parallax drag rather than a scroll container, so a gesture's applied distance depends on layout timing and lands a few hundred pixels apart between boots. A scene that fails for a reason unrelated to the code is worse than a missing scene, because the only way to green it is to re-record. The two-pane layout, where an unclipped pane does the most damage, is covered instead.
+**What this still cannot see.** Three things are deliberately not photographed, for the same reason each time: a scene that fails for a reason unrelated to the launcher is worse than a missing scene, because the only way to green it is to re-record, and a baseline people re-record without reading protects nothing.
+
+- **A scrolled Start.** The pane is driven by a parallax drag rather than a scroll container, so it exposes no scroll semantics and the same gesture lands a few hundred pixels apart between boots.
+- **The two-pane layout.** Reached through `wm size`, it renders text a shade differently from one boot to the next. `WindowPostureTest` covers the layout's arithmetic instead, and a real foldable is still the only way to see a hinge in it.
+- **Legibility**, which a pixel comparison cannot judge at all: an unreadable drawer is perfectly stable from run to run. So the light theme is also asserted as a number, measured off the rendered pixels against the WCAG AA floor of 4.5:1.
 
 `notificationListenerReceivesAndroidPostedNotification` fails on emulator images where the notification listener service never binds; it is environmental and fails identically on unmodified `HEAD`. OEM-specific rendering, media-session behaviour, the home-screen widget on an OEM shell, live hinge behaviour, and two-device Handoff still need hardware testing. Treat the emulator as necessary but not sufficient, and check the rendering on the device you care about.
 

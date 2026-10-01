@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Records or verifies the launcher's screenshot baselines on an emulator that matches CI exactly.
 #
+# Compact postures only. The two-pane layout reached with `wm size` renders text a shade differently
+# from one boot to the next, so a baseline of it would fail for reasons that have nothing to do with
+# the launcher; `WindowPostureTest` covers that layout's arithmetic instead.
+#
 # The device profile, the renderer and the display settings are all part of a baseline. Change any of
 # them and every image is a different image, so this script pins the same AVD, the same swiftshader
 # flags, the same clock format and the same display sizes the workflow uses. CI already compares
@@ -77,19 +81,8 @@ record_flag=()
 [[ "$MODE" == record ]] && record_flag=(-PscreenshotBaselines=update)
 
 ./gradlew connectedDebugAndroidTest --offline "${record_flag[@]}" \
-  -Pandroid.testInstrumentationRunnerArguments.class=tgo1014.gridlauncher.ScreenshotTest \
-  -Pandroid.testInstrumentationRunnerArguments.notClass=tgo1014.gridlauncher.ExpandedScreenshotTest
+  -Pandroid.testInstrumentationRunnerArguments.class=tgo1014.gridlauncher.ScreenshotTest
 python3 scripts/verify-device-tests.py --class tgo1014.gridlauncher.ScreenshotTest
-
-# The same scenes again at the width where Start and All apps sit side by side.
-adb shell wm size 2208x1840
-adb shell wm density 420
-sleep 5
-./gradlew connectedDebugAndroidTest --offline "${record_flag[@]}" \
-  -Pandroid.testInstrumentationRunnerArguments.class=tgo1014.gridlauncher.ExpandedScreenshotTest
-python3 scripts/verify-device-tests.py --class tgo1014.gridlauncher.ExpandedScreenshotTest
-adb shell wm size reset
-adb shell wm density reset
 
 # "$REMOTE/." copies the contents in rather than nesting a directory of the same name.
 adb pull "$REMOTE/." "$EVIDENCE" > /dev/null

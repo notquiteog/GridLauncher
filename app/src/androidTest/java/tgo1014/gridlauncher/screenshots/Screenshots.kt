@@ -71,6 +71,13 @@ object Screenshots {
     /** The clock tile's rendering of [PINNED_INSTANT], and the marker that live content has landed. */
     const val PINNED_TEXT = "09:41"
 
+    /**
+     * No display cutout. The ordinary status-bar inset stays - it is the same on every machine and it
+     * is part of what the launcher draws - but a cutout adds another 24dp on top of it, and whether one
+     * is emulated is the emulator's decision rather than the launcher's.
+     */
+    const val EXPECTED_CUTOUT_INSET = 0
+
     private const val ASSET_DIR = "screenshots"
 
     /**
@@ -216,6 +223,41 @@ object Screenshots {
     }
 
     /**
+     * Waits until the window is inset the way every scene expects: not at all.
+     *
+     * A display cutout is 24dp of extra inset across the top of the frame, and whether the emulator
+     * emulates one is decided by its device definition rather than by anything under test. Pinning the
+     * overlay off before the run is not enough on its own - the display re-applies its configuration
+     * at points during the run and sometimes puts the cutout back. So the capture itself waits for the
+     * frame to have the shape the scene is about, rather than photographing whichever shape arrived and
+     * reporting twenty per cent of the pixels changed.
+     *
+     * A wait that times out says so. A bad frame that is photographed anyway is the worst outcome here:
+     * it looks exactly like a regression, and the only way to make it go away is to re-record.
+     */
+    private fun awaitExpectedInsets(compose: AndroidComposeTestRule<*, out ComponentActivity>) {
+        val deadline = System.currentTimeMillis() + 20_000
+        var cutout = cutoutInset(compose)
+        while (cutout != EXPECTED_CUTOUT_INSET && System.currentTimeMillis() < deadline) {
+            Thread.sleep(250)
+            cutout = cutoutInset(compose)
+        }
+        if (cutout != EXPECTED_CUTOUT_INSET) {
+            throw AssertionError(
+                "the display is emulating a cutout inset by $cutout pixels and stayed that way; " +
+                    "every scene here is photographed without one, and it is 24dp of difference " +
+                    "across the top of the frame. Capturing it anyway would report a regression that " +
+                    "is not one. ${insetsOf(compose.activity as MainActivity)}"
+            )
+        }
+    }
+
+    /** The display cutout the window is drawing under, or -1 if the platform will not say. */
+    private fun cutoutInset(compose: AndroidComposeTestRule<*, out ComponentActivity>): Int =
+        (compose.activity as MainActivity).window.decorView.rootWindowInsets
+            ?.getInsets(android.view.WindowInsets.Type.displayCutout())?.top ?: -1
+
+    /**
      * Waits until the live tiles have finished loading their content.
      *
      * A hub tile reads its content asynchronously, and until it lands the tile draws only its hub
@@ -282,6 +324,7 @@ object Screenshots {
      * they would make every baseline stale within the hour.
      */
     fun capture(compose: AndroidComposeTestRule<*, out ComponentActivity>): Capture {
+        awaitExpectedInsets(compose)
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
