@@ -45,6 +45,10 @@ adb shell settings put global animator_duration_scale 0
 # The clock tile formats itself from this device setting. Left alone it differs between images and
 # between machines, which is exactly the sort of invisible input that quietly invalidates a baseline.
 adb shell settings put system time_12_24 24
+# The system bars are 24dp and whether they are inset or drawn under shifts the whole frame, so a
+# scene captured with them hidden is a different picture from one captured with them shown. Whatever
+# left them hidden on a previous run must not decide this one.
+adb shell settings put global policy_control null
 # Created here rather than from the test: the app's shell can copy *into* this directory but the
 # instrumentation runner will not chain a mkdir in front of the copy.
 adb shell mkdir -p "$REMOTE"

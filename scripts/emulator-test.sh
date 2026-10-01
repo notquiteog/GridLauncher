@@ -21,6 +21,10 @@ adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
 # The clock tile formats itself from this device setting, so it is part of every screenshot baseline.
 adb shell settings put system time_12_24 24
+# The system bars are 24dp and whether they are inset or drawn under shifts the whole frame, so a
+# scene captured with them hidden is a different picture from one captured with them shown. Whatever
+# left them hidden on a previous run must not decide this one.
+adb shell settings put global policy_control null
 # Shell-owned, because the app under test is uninstalled - and its storage deleted - when a run ends.
 adb shell mkdir -p /data/local/tmp/grid-screenshots
 adb shell rm -f /data/local/tmp/grid-screenshots/*.png

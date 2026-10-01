@@ -96,6 +96,24 @@ object Screenshots {
         android.os.ParcelFileDescriptor.AutoCloseInputStream(out).use { it.readBytes() }
     }
 
+    /**
+     * The window insets this capture was taken with, for the failure message.
+     *
+     * The status bar is 24dp tall and whether it is inset or drawn under changes the whole frame, so
+     * a scene captured with the bars visible and one captured with them hidden differ by a band across
+     * the top - twenty per cent of the image in the worst case. The emulator scripts pin the bar state
+     * so that cannot happen quietly, and this says what actually happened when it does anyway, rather
+     * than leaving a wall of magenta and a guess.
+     */
+    private fun insetsOf(activity: MainActivity): String {
+        val insets = activity.window.decorView.rootWindowInsets ?: return "unknown"
+        fun name(type: Int) = runCatching {
+            insets.getInsets(type).let { "top=${it.top} bottom=${it.bottom}" }
+        }.getOrDefault("?")
+        return "systemBars(${name(android.view.WindowInsets.Type.systemBars())}) " +
+            "displayCutout(${name(android.view.WindowInsets.Type.displayCutout())})"
+    }
+
     private fun write(target: File, bytes: ByteArray) {
         target.parentFile?.mkdirs()
         target.writeBytes(bytes)
@@ -322,7 +340,9 @@ object Screenshots {
             write(File(outputDir(), "$name.actual.png"), png(actual, width, height))
             fail(
                 "'$name' is ${width}x$height but its baseline is ${expectedPixels.width}x${expectedPixels.height}. " +
-                    "That is a layout change, not noise. Refresh the baseline after confirming it is intended."
+                    "That is a layout change, not noise. Captured with " +
+                    "${insetsOf(compose.activity as MainActivity)}. " +
+                    "Refresh the baseline after confirming it is intended."
             )
         }
         val expectedBuffer = IntArray(width * height)
@@ -337,6 +357,7 @@ object Screenshots {
             )
             fail(
                 "'$name' changed: ${result.describe()}. " +
+                    "Captured with ${insetsOf(compose.activity as MainActivity)}. " +
                     "Changed pixels are magenta in $name.diff.png, and the untouched capture is $name.actual.png. " +
                     "Both are pulled into build/device-evidence/screenshots/. " +
                     "If the change is intended, refresh the baselines; if not, this is the regression " +
