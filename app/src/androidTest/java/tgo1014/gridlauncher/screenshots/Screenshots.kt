@@ -71,12 +71,6 @@ object Screenshots {
     /** The clock tile's rendering of [PINNED_INSTANT], and the marker that live content has landed. */
     const val PINNED_TEXT = "09:41"
 
-    /**
-     * No display cutout. The ordinary status-bar inset stays - it is the same on every machine and it
-     * is part of what the launcher draws - but a cutout adds another 24dp on top of it, and whether one
-     * is emulated is the emulator's decision rather than the launcher's.
-     */
-    const val EXPECTED_CUTOUT_INSET = 0
 
     private const val ASSET_DIR = "screenshots"
 
@@ -125,6 +119,10 @@ object Screenshots {
         target.parentFile?.mkdirs()
         target.writeBytes(bytes)
         publish(target)
+    }
+
+    private fun write(target: File, text: String) {
+        write(target, text.toByteArray())
     }
 
     private fun updating(): Boolean =
@@ -223,39 +221,60 @@ object Screenshots {
     }
 
     /**
-     * Waits until the window is inset the way every scene expects: not at all.
+     * Waits until the display looks the way this scene's baseline was recorded.
      *
-     * A display cutout is 24dp of extra inset across the top of the frame, and whether the emulator
-     * emulates one is decided by its device definition rather than by anything under test. Pinning the
-     * overlay off before the run is not enough on its own - the display re-applies its configuration
-     * at points during the run and sometimes puts the cutout back. So the capture itself waits for the
-     * frame to have the shape the scene is about, rather than photographing whichever shape arrived and
-     * reporting twenty per cent of the pixels changed.
+     * Every baseline carries a small sidecar recording the display it was taken under, cutout inset
+     * above all. That inset is worth 24dp across the top of every frame, and whether the emulator
+     * emulates a cutout is a property of its device definition: one machine's profile has one, another
+     * does not, and the same system image renders differently on each.
      *
-     * A wait that times out says so. A bad frame that is photographed anyway is the worst outcome here:
-     * it looks exactly like a regression, and the only way to make it go away is to re-record.
+     * So a scene is not compared against a hardcoded expectation, which would only ever be right on
+     * the machine that wrote it. It waits until the display matches the baseline, and if it never does
+     * it says what the baseline expected and what it found. That covers both a machine that differs
+     * from the recorder and a display that changes its mind halfway through a run.
      */
-    private fun awaitExpectedInsets(compose: AndroidComposeTestRule<*, out ComponentActivity>) {
+    private fun awaitBaselineDisplay(compose: AndroidComposeTestRule<*, out ComponentActivity>, expected: Display) {
         val deadline = System.currentTimeMillis() + 20_000
-        var cutout = cutoutInset(compose)
-        while (cutout != EXPECTED_CUTOUT_INSET && System.currentTimeMillis() < deadline) {
+        var found = readDisplay(compose)
+        while (found.cutoutTop != expected.cutoutTop && System.currentTimeMillis() < deadline) {
             Thread.sleep(250)
-            cutout = cutoutInset(compose)
+            found = readDisplay(compose)
         }
-        if (cutout != EXPECTED_CUTOUT_INSET) {
+        if (found.cutoutTop != expected.cutoutTop) {
             throw AssertionError(
-                "the display is emulating a cutout inset by $cutout pixels and stayed that way; " +
-                    "every scene here is photographed without one, and it is 24dp of difference " +
-                    "across the top of the frame. Capturing it anyway would report a regression that " +
-                    "is not one. ${insetsOf(compose.activity as MainActivity)}"
+                "this display has a cutout inset of ${found.cutoutTop}px at the top; the baseline was " +
+                    "recorded with ${expected.cutoutTop}px, and it stayed that way for 20 seconds. " +
+                    "Photographing it anyway would report a regression that is not one. " +
+                    "${insetsOf(compose.activity as MainActivity)}"
             )
         }
     }
 
-    /** The display cutout the window is drawing under, or -1 if the platform will not say. */
-    private fun cutoutInset(compose: AndroidComposeTestRule<*, out ComponentActivity>): Int =
-        (compose.activity as MainActivity).window.decorView.rootWindowInsets
-            ?.getInsets(android.view.WindowInsets.Type.displayCutout())?.top ?: -1
+    /** What the display looked like at capture time. Recorded beside every baseline. */
+    data class Display(val cutoutTop: Int, val systemBarsTop: Int, val width: Int, val height: Int)
+
+    private fun readDisplay(compose: AndroidComposeTestRule<*, out ComponentActivity>): Display {
+        val insets = (compose.activity as MainActivity).window.decorView.rootWindowInsets
+        val metrics = compose.activity.resources.displayMetrics
+        return Display(
+            cutoutTop = insets?.getInsets(android.view.WindowInsets.Type.displayCutout())?.top ?: -1,
+            systemBarsTop = insets?.getInsets(android.view.WindowInsets.Type.systemBars())?.top ?: -1,
+            width = metrics.widthPixels,
+            height = metrics.heightPixels,
+        )
+    }
+
+    private fun displayJson(display: Display) =
+        "{\"cutoutTop\":${display.cutoutTop},\"systemBarsTop\":${display.systemBarsTop}," +
+            "\"width\":${display.width},\"height\":${display.height}}"
+
+    private fun parseDisplay(text: String): Display = Display(
+        cutoutTop = text.substringAfter("\"cutoutTop\":").substringBefore(',').trim().toInt(),
+        systemBarsTop = text.substringAfter("\"systemBarsTop\":").substringBefore(',').trim().toInt(),
+        width = text.substringAfter("\"width\":").substringBefore(',').trim().toInt(),
+        height = text.substringAfter("\"height\":").substringBefore('}').trim().toInt(),
+    )
+
 
     /**
      * Waits until the live tiles have finished loading their content.
@@ -324,7 +343,6 @@ object Screenshots {
      * they would make every baseline stale within the hour.
      */
     fun capture(compose: AndroidComposeTestRule<*, out ComponentActivity>): Capture {
-        awaitExpectedInsets(compose)
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
@@ -358,15 +376,27 @@ object Screenshots {
 
     /** Compares the current window against its baseline, or records it when asked to. */
     fun verify(compose: AndroidComposeTestRule<*, out ComponentActivity>, name: String) {
+        val display = readDisplay(compose)
+        if (!updating()) {
+            val baseline = runCatching {
+                assets().open("$ASSET_DIR/$name.json").bufferedReader().use { it.readText() }.let(::parseDisplay)
+            }.getOrNull() ?: error(
+                "No display record for '$name'. It travels with the baseline so a scene is only ever " +
+                    "compared under the display conditions it was recorded under; re-record it."
+            )
+            awaitBaselineDisplay(compose, baseline)
+        }
         val shot = stableCapture(compose)
         val width = shot.width
         val height = shot.height
         val actual = shot.pixels
 
-        if (updating()) {
-            write(File(outputDir(), "$name.png"), png(actual, width, height))
-            return
-        }
+        // Recorded whether or not this is a recording run, so a failure ships the conditions it was
+        // captured under alongside the picture.
+        write(File(outputDir(), "$name.png"), png(actual, width, height))
+        write(File(outputDir(), "$name.json"), displayJson(display))
+
+        if (updating()) return
 
         val expected = runCatching { assets().open("$ASSET_DIR/$name.png").use { it.readBytes() } }.getOrNull()
         if (expected == null) {

@@ -89,7 +89,7 @@ adb pull "$REMOTE/." "$EVIDENCE" > /dev/null
 
 if [[ "$MODE" == record ]]; then
   copied=0
-  for scene in "$EVIDENCE"/*.png; do
+  for scene in "$EVIDENCE"/*; do
     [[ -e "$scene" ]] || { echo "no captures came back" >&2; exit 1; }
     case "$(basename "$scene")" in
       *.actual.png|*.diff.png|wallpaper-*) continue ;;
