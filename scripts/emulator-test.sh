@@ -26,12 +26,25 @@ adb shell settings put system time_12_24 24
 # left them hidden on a previous run must not decide this one.
 adb shell settings put global policy_control null
 # Shell-owned, because the app under test is uninstalled - and its storage deleted - when a run ends.
-# A display cutout is 24dp of extra inset at the top of the frame, and whether one is emulated is a
-# property of the emulator image rather than of anything being tested. Two machines on the same image
-# build disagreed by exactly that band. Pin it off.
-for cutout in corner double hole tall emu01 waterfall; do
-  adb shell cmd overlay disable "com.android.internal.display.cutout.emulation.$cutout" || true
+# A display cutout is 24dp of extra inset at the top of every frame, and whether one is emulated
+# comes from the emulator's device definition rather than from anything being tested. Two machines on
+# the same image build disagreed by exactly that band, which is twenty per cent of the pixels changed.
+#
+# It has to be a toggle, not a disable. Disabling an overlay that is already off leaves the display
+# holding its previous configuration, so the cutout survives; enabling and then disabling forces the
+# display to re-apply its config and land on "no cutout". The wait afterwards is the same point in
+# time: the reconfiguration is not instant.
+CUTOUT=com.android.internal.display.cutout.emulation.hole
+adb shell cmd overlay enable-exclusive "$CUTOUT" >/dev/null 2>&1 || true
+adb shell cmd overlay disable "$CUTOUT" >/dev/null 2>&1 || true
+cutout_clear() {
+  adb shell dumpsys window displays 2>/dev/null | grep -m1 "mDisplayCutout=" | grep -q "insets=Rect(0, 0 - 0, 0)"
+}
+for _ in $(seq 1 20); do
+  cutout_clear && break
+  sleep 1
 done
+cutout_clear || { echo "a display cutout is still emulated; every screenshot would be 24dp taller" >&2; exit 1; }
 adb shell mkdir -p /data/local/tmp/grid-screenshots
 adb shell rm -f /data/local/tmp/grid-screenshots/*.png
 # The expanded scenes cannot run at phone width, and a JUnit assumption is reported as a failure by

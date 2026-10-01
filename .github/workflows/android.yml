@@ -92,9 +92,16 @@ jobs:
           git commit -m "Re-record screenshot baselines on CI" \
             -m "Recorded by workflow run ${GITHUB_RUN_ID} on the runner that will compare them."
           git push origin "HEAD:$branch"
-          gh pr create --head "$branch" --base android-17-live-tiles \
-            --title "Re-record screenshot baselines" \
-            --body "Recorded on the CI runner by run ${GITHUB_RUN_ID}. Read the image diffs before merging: a screenshot baseline only proves something if a human confirmed the change was intended."
+          # Not `gh pr create`: this repository does not let the Actions token open pull requests, and
+          # asking for a wider permission to save one click is a bad trade. The branch is pushed, so
+          # this is the one link that turns it into a review.
+          {
+            echo "### Screenshot baselines re-recorded"
+            echo
+            echo "Recorded on this runner by run ${GITHUB_RUN_ID}."
+            echo
+            echo "Open a pull request: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/android-17-live-tiles...${branch}?expand=1"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Android 17 install and UI tests
         run: scripts/emulator-test.sh
       - name: Upload installable APK
