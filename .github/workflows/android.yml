@@ -30,11 +30,12 @@ jobs:
       - name: Install pinned Android 17 tools
         run: scripts/setup-android.sh emulator
       - name: Verify Play channel update isolation
+        if: github.event_name != 'workflow_dispatch' || inputs.update_screenshots != true
         run: |
           ./gradlew processReleaseMainManifest generateReleaseBuildConfig -PdistributionChannel=play
           python3 scripts/verify-play-channel.py
       - name: Restore signing key
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.update_screenshots != true)
         env:
           KEYSTORE: ${{ secrets.APK_SIGNING_KEYSTORE }}
         run: |
@@ -42,7 +43,7 @@ jobs:
           printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/gridlauncher.jks"
           chmod 600 "$RUNNER_TEMP/gridlauncher.jks"
       - name: Test, lint and build signed APK
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.update_screenshots != true)
         env:
           SIGNING_KEYSTORE: ${{ runner.temp }}/gridlauncher.jks
           SIGNING_STORE_PASSWORD: ${{ secrets.APK_SIGNING_PASSWORD }}
@@ -59,6 +60,7 @@ jobs:
           ./gradlew lintDebug --no-daemon --stacktrace
           ./gradlew assembleRelease --stacktrace
       - name: Verify APK signatures and record checksum
+        if: github.event_name != 'workflow_dispatch' || inputs.update_screenshots != true
         run: |
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/37.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release.apk
@@ -103,8 +105,10 @@ jobs:
             echo "Open a pull request: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${branch}?expand=1"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Android 17 install and UI tests
+        if: github.event_name != 'workflow_dispatch' || inputs.update_screenshots != true
         run: scripts/emulator-test.sh
       - name: Upload installable APK
+        if: github.event_name != 'workflow_dispatch' || inputs.update_screenshots != true
         uses: actions/upload-artifact@v4
         with:
           name: GridLauncher-Android17-${{ github.run_number }}

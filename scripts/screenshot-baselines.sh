@@ -80,7 +80,8 @@ adb shell rm -f "$REMOTE"/*.png
 record_flag=()
 [[ "$MODE" == record ]] && record_flag=(-PscreenshotBaselines=update)
 
-./gradlew connectedDebugAndroidTest --offline "${record_flag[@]}" \
+# A fresh CI runner may not have the UTP execution dependency yet, even after assembling tests.
+./gradlew connectedDebugAndroidTest "${record_flag[@]}" \
   -Pandroid.testInstrumentationRunnerArguments.class=tgo1014.gridlauncher.ScreenshotTest
 python3 scripts/verify-device-tests.py --class tgo1014.gridlauncher.ScreenshotTest
 
