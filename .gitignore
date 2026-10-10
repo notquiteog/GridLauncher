@@ -80,3 +80,13 @@ lint/generated/
 lint/outputs/
 lint/tmp/
 # lint/reports/
+
+.idea/
+
+.kotlin/
+*.jks
+*.keystore
+dist/
+
+# Python bytecode from the scripts in scripts/
+__pycache__/

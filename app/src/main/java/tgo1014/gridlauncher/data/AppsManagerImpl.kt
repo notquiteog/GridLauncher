@@ -1,0 +1,90 @@
+package tgo1014.gridlauncher.data
+
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.content.pm.PackageManager.MATCH_ALL
+import android.content.pm.ResolveInfo
+import android.net.Uri
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import tgo1014.gridlauncher.domain.AppIconManager
+import tgo1014.gridlauncher.domain.AppsManager
+import tgo1014.gridlauncher.domain.AppsManagerDataSource
+import tgo1014.gridlauncher.domain.models.App
+import tgo1014.gridlauncher.ui.models.GridItem
+import javax.inject.Inject
+
+
+class AppsManagerImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val packageManager: PackageManager,
+    private val appIconManager: AppIconManager,
+    private val appsManagerDataSource: AppsManagerDataSource,
+    private val scope: CoroutineScope,
+) : AppsManager {
+
+    override val installedAppsFlow = appsManagerDataSource.installedAppsList
+    override val homeGridFlow = appsManagerDataSource.homeGridFlow
+
+    init {
+        updateAppsList()
+    }
+
+    override fun openApp(app: App) {
+        val intent = tgo1014.gridlauncher.live.BuiltInTiles.intent(app.packageName)
+            ?: packageManager.getLaunchIntentForPackage(app.packageName)
+        if (intent == null) {
+            android.widget.Toast.makeText(context, "This app is unavailable", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Let Android run its own open transition: it is already a clean fade-through, and it stays
+        // consistent with every other app on the device instead of being our own house style.
+        runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { android.widget.Toast.makeText(context, "This app is unavailable", android.widget.Toast.LENGTH_SHORT).show() }
+    }
+
+    override suspend fun setGrid(grid: List<GridItem>) = appsManagerDataSource.setGrid(grid)
+
+    override fun updateAppsList() {
+        scope.launch {
+            appsManagerDataSource.setAppList(fetchAllApps())
+        }
+    }
+
+    override fun uninstallApp(app: App) {
+        val intent = Intent(Intent.ACTION_DELETE).apply {
+            data = Uri.parse("package:${app.packageName}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+
+    private suspend fun fetchAllApps(): List<App> {
+        val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+        val resolveInfoList = packageManager.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(MATCH_ALL.toLong()))
+        return resolveInfoList
+            .distinctBy { it.packageName }
+            .filterNot { it.packageName == context.packageName }
+            .mapNotNull {
+                runCatching { App(
+                    name = it.appName,
+                    packageName = it.packageName,
+                    icon = appIconManager.getIcon(it.packageName),
+                    isSystemApp = it.isSystemApp
+                ) }.getOrNull()
+            }
+    }
+
+    private val ResolveInfo.packageName get() = activityInfo.packageName
+    private val ResolveInfo.applicationInfo
+        get() = packageManager.getApplicationInfo(packageName, PackageManager.ApplicationInfoFlags.of(0))
+    private val ResolveInfo.appName: String
+        get() = packageManager.getApplicationLabel(applicationInfo).toString()
+
+    private val ResolveInfo.isSystemApp
+        get() = (applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+
+}

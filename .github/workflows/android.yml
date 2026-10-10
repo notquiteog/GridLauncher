@@ -1,53 +1,130 @@
-name: Android CI
-
+name: Installable Android APK
 on:
   push:
-    branches: [ "develop" ]
   pull_request:
-    branches: [ "develop" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
-
+    inputs:
+      update_screenshots:
+        description: Re-record the screenshot baselines on CI and open a pull request with them
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
+    timeout-minutes: 45
+    env:
+      VERSION_CODE: ${{ github.run_number }}
     steps:
-    - uses: actions/checkout@v3
-    - name: set up JDK 11
-      uses: actions/setup-java@v3
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: gradle
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-      
-    - name: Run gradle tests
-      run: ./gradlew test
-
-    - name: Build apk debug project (APK)
-      run: ./gradlew assembleDebug
-
-    - name: Get app version
-      id: get_version
-      uses: eriknyk/android-get-app-version-action@v1.0.1
-
-    - name: Upload Release Build to Artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: 'gridlauncher-v${{ steps.get_version.outputs.versionName }}-${{ steps.get_version.outputs.versionCode }}-${{github.run_number}}.apk'
-        paths: |
-          app/build/outputs/apk/debug/
-
-    - name: Create Github Release
-      uses: softprops/action-gh-release@v1
-      with:
-        generate_release_notes: true
-        prerelease: true
-        files: |
-          app/build/outputs/apk/debug/app-debug.apk
-   
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install pinned Android 17 tools
+        run: scripts/setup-android.sh emulator
+      - name: Verify Play channel update isolation
+        run: |
+          ./gradlew processReleaseMainManifest generateReleaseBuildConfig -PdistributionChannel=play
+          python3 scripts/verify-play-channel.py
+      - name: Restore signing key
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE: ${{ secrets.APK_SIGNING_KEYSTORE }}
+        run: |
+          test -n "$KEYSTORE"
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/gridlauncher.jks"
+          chmod 600 "$RUNNER_TEMP/gridlauncher.jks"
+      - name: Test, lint and build signed APK
+        if: github.event_name != 'pull_request'
+        env:
+          SIGNING_KEYSTORE: ${{ runner.temp }}/gridlauncher.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.APK_SIGNING_PASSWORD }}
+          SIGNING_KEY_ALIAS: gridlauncher
+          SIGNING_KEY_PASSWORD: ${{ secrets.APK_SIGNING_PASSWORD }}
+        run: |
+          ./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest --stacktrace
+          ./gradlew lintDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --stacktrace
+      - name: Build pull request with development key
+        if: github.event_name == 'pull_request'
+        run: |
+          ./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest --stacktrace
+          ./gradlew lintDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --stacktrace
+      - name: Verify APK signatures and record checksum
+        run: |
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/37.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/release/app-release.apk
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/GridLauncher-Android17.apk
+          python3 scripts/write-update-manifest.py dist/GridLauncher-Android17.apk "android17-${{ github.run_number }}"
+          (cd dist && sha256sum GridLauncher-Android17.apk update.json > SHA256SUMS)
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Re-record screenshot baselines on the runner
+        # Two machines can disagree about an antialiasing pixel, so the authoritative baseline is
+        # the one this runner recorded. Refreshes go through a pull request because a baseline
+        # committed straight to the branch is a baseline nobody looked at.
+        if: github.event_name == 'workflow_dispatch' && inputs.update_screenshots == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./gradlew testDebugUnitTest assembleDebugAndroidTest
+          scripts/screenshot-baselines.sh record
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/androidTest/assets/screenshots
+          if git diff --cached --quiet; then
+            echo "Scenes are unchanged; nothing to propose." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="screenshots-${{ github.run_number }}"
+          git commit -m "Re-record screenshot baselines on CI" \
+            -m "Recorded by workflow run ${GITHUB_RUN_ID} on the runner that will compare them."
+          git push origin "HEAD:$branch"
+          # Not `gh pr create`: this repository does not let the Actions token open pull requests, and
+          # asking for a wider permission to save one click is a bad trade. The branch is pushed, so
+          # this is the one link that turns it into a review.
+          {
+            echo "### Screenshot baselines re-recorded"
+            echo
+            echo "Recorded on this runner by run ${GITHUB_RUN_ID}."
+            echo
+            echo "Open a pull request: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${branch}?expand=1"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Android 17 install and UI tests
+        run: scripts/emulator-test.sh
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GridLauncher-Android17-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Upload test and device evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/
+            build/device-evidence/
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gridlauncher.jks"
+      - name: Publish tested APK release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "android17-${{ github.run_number }}" dist/GridLauncher-Android17.apk dist/update.json dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" --title "GridLauncher 2.11 · Android 17 · build ${{ github.run_number }}" --notes-file .github/release-notes.md
+          gh release edit "android17-${{ github.run_number }}" --repo "$GITHUB_REPOSITORY" --draft=false
