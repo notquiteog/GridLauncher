@@ -43,37 +43,7 @@ done
 [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]] || { cat build/device-evidence/screenshot-emulator.log; exit 1; }
 
 adb shell input keyevent 82
-adb shell settings put global window_animation_scale 0
-adb shell settings put global transition_animation_scale 0
-adb shell settings put global animator_duration_scale 0
-# The clock tile formats itself from this device setting. Left alone it differs between images and
-# between machines, which is exactly the sort of invisible input that quietly invalidates a baseline.
-adb shell settings put system time_12_24 24
-# The system bars are 24dp and whether they are inset or drawn under shifts the whole frame, so a
-# scene captured with them hidden is a different picture from one captured with them shown. Whatever
-# left them hidden on a previous run must not decide this one.
-adb shell settings put global policy_control null
-# Created here rather than from the test: the app's shell can copy *into* this directory but the
-# instrumentation runner will not chain a mkdir in front of the copy.
-# A display cutout is 24dp of extra inset at the top of every frame, and whether one is emulated
-# comes from the emulator's device definition rather than from anything being tested. Two machines on
-# the same image build disagreed by exactly that band, which is twenty per cent of the pixels changed.
-#
-# It has to be a toggle, not a disable. Disabling an overlay that is already off leaves the display
-# holding its previous configuration, so the cutout survives; enabling and then disabling forces the
-# display to re-apply its config and land on "no cutout". The wait afterwards is the same point in
-# time: the reconfiguration is not instant.
-CUTOUT=com.android.internal.display.cutout.emulation.hole
-adb shell cmd overlay enable-exclusive "$CUTOUT" >/dev/null 2>&1 || true
-adb shell cmd overlay disable "$CUTOUT" >/dev/null 2>&1 || true
-cutout_clear() {
-  adb shell dumpsys window displays 2>/dev/null | grep -m1 "mDisplayCutout=" | grep -q "insets=Rect(0, 0 - 0, 0)"
-}
-for _ in $(seq 1 20); do
-  cutout_clear && break
-  sleep 1
-done
-cutout_clear || { echo "a display cutout is still emulated; every screenshot would be 24dp taller" >&2; exit 1; }
+bash scripts/configure-emulator-display.sh
 adb shell mkdir -p "$REMOTE"
 adb shell rm -f "$REMOTE"/*.png
 

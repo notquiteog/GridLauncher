@@ -3,6 +3,7 @@ package tgo1014.gridlauncher.ui.theme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -15,9 +16,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import coil3.compose.AsyncImage as CoilAsyncImage
+import coil3.request.ImageRequest
+import coil3.size.Size as CoilSize
 import tgo1014.gridlauncher.domain.models.IconShape
 import kotlin.math.PI
 import kotlin.math.abs
@@ -51,8 +55,14 @@ fun appIconTint(color: Color): ColorFilter = ColorFilter.colorMatrix(ColorMatrix
 fun AppIconImage(model: Any?, modifier: Modifier, fill: Float = 1f, tint: Color? = null) {
     val scale = 1f / fill.coerceIn(0.35f, 1f)
     val mask = IconShape.of(LocalGlass.current.settings.iconShape).shape()
+    val context = LocalContext.current
+    // AppIconManager already bounds these images to 256px. Decode that original consistently:
+    // reusing a thumbnail sampled for a previous tile size changes icon edges in the app list.
+    val request = remember(context, model) {
+        ImageRequest.Builder(context).data(model).size(CoilSize.ORIGINAL).build()
+    }
     CoilAsyncImage(
-        model = model,
+        model = request,
         contentDescription = null,
         // The mask goes on before the optical scale, so it always covers the size the caller asked
         // for and only the artwork is scaled inside it. The other way round, a low-fill icon would
