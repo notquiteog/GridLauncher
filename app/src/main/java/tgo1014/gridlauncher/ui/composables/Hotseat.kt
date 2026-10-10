@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -13,7 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +45,7 @@ fun Hotseat(
     val glass = LocalGlass.current
     val slots = 4
     val resolved = pinned.take(slots).mapNotNull { name -> apps.firstOrNull { it.packageName == name } }
+    if (resolved.isEmpty()) return
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             resolved.forEach { app ->
@@ -59,17 +64,19 @@ fun Hotseat(
 
 /** The apps you reach for most, offered above the alphabetical list. */
 @Composable
-fun FrequentRow(apps: List<App>, frequent: List<String>, sort: String, onOpen: (App) -> Unit, onPin: (App) -> Unit, modifier: Modifier = Modifier) {
+@OptIn(ExperimentalFoundationApi::class)
+fun FrequentRow(apps: List<App>, frequent: List<String>, sort: String, onOpen: (App) -> Unit, onPin: (App) -> Unit,
+    modifier: Modifier = Modifier, excluded: Set<String> = emptySet(), onExclude: (App) -> Unit = {}) {
     val glass = LocalGlass.current
-    val suggestions = frequent.asSequence().mapNotNull { name -> apps.firstOrNull { it.packageName == name } }
-        .let { if (sort == "alphabetical") it.sortedBy { app -> app.name.lowercase() } else it }
-        .take(8).toList()
-    if (suggestions.size < 2) return
+    val suggestions = tgo1014.gridlauncher.ui.home.suggestedApps(apps, frequent, excluded, sort)
+    if (suggestions.isEmpty()) return
     Column(modifier.fillMaxWidth()) {
         Text(if (sort == "alphabetical") "Apps" else if (sort == "recent") "Recent" else "Most used", color = glass.ink.copy(alpha = .7f), fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(suggestions, key = { it.packageName }) { app ->
-                Column(Modifier.width(72.dp).clickable { onOpen(app) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                var menu by remember { mutableStateOf(false) }
+                Column(Modifier.width(72.dp).combinedClickable(onClick = { onOpen(app) }, onLongClick = { menu = true })
+                    .semantics { contentDescription = "Suggested ${app.name}" }, horizontalAlignment = Alignment.CenterHorizontally) {
                     Box {
                         AppIconImage(app.icon.iconFile, Modifier.size(52.dp), app.icon.fill)
                         Box(Modifier.align(Alignment.TopEnd).size(20.dp).clip(CircleShape)
@@ -80,6 +87,9 @@ fun FrequentRow(apps: List<App>, frequent: List<String>, sort: String, onOpen: (
                     }
                     Text(app.name, color = glass.ink, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 4.dp))
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text("Don’t suggest this app") }, onClick = { menu = false; onExclude(app) })
+                    }
                 }
             }
         }

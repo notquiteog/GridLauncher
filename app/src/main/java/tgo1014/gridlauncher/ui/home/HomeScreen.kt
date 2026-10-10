@@ -73,6 +73,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.stateFlow.collectAsStateWithLifecycle()
     val frequent by viewModel.frequentApps.collectAsStateWithLifecycle(emptyList())
+    val recent by viewModel.recentApps.collectAsStateWithLifecycle(emptyList())
     val activity = LocalActivity.current as? androidx.activity.ComponentActivity
     LaunchedEffect(state.tileSettings.darkTheme) {
         val style = if (state.tileSettings.darkTheme) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
@@ -113,7 +114,7 @@ fun HomeScreen(
         onPinToHotseat = { viewModel.pinToHotseat(it) },
         onFolderChanged = viewModel::onFolderChanged,
         onSearchRowClicked = viewModel::onSearchRowClicked,
-        frequent = frequent,
+        frequent = if (state.tileSettings.drawerSort == "recent") recent else frequent,
         onEditLayout = viewModel::setEditingLayout
     )
 }
@@ -178,8 +179,10 @@ private fun HomeScreen(
     fun goToPage(page: Int) = scope.launch {
         if (glass.motion) pagerState.animateScrollToPage(page) else pagerState.scrollToPage(page)
     }
+    var predictingBack by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedIfTrueEffect(pagerState.settledPage == 0) {
+    LaunchedIfTrueEffect(pagerState.settledPage == 0 && !predictingBack) {
         onHome()
         keyboardController?.hide()
     }
@@ -205,6 +208,7 @@ private fun HomeScreen(
             onItemDropped = onItemDropped, onItemLongClicked = onItemLongClicked, onTileEvent = onTileEvent,
             onEditLayout = onEditLayout, showAllAppsLink = showFooter, onHandoffFocusHandled = onHandoffFocusHandled,
             onOpenApp = onAppClicked, onFolderChanged = onFolderChanged,
+            isActivePane = pagerState.settledPage == 0 && !predictingBack,
             onFooterClicked = { goToPage(1) })
     }
     val allApps: @Composable () -> Unit = {
@@ -215,7 +219,7 @@ private fun HomeScreen(
             onProfile = { name -> onProfile(name); goToPage(0) },
             onCreateLayout = { name, copy -> onCreateLayout(name, copy); goToPage(0) },
             onRenameLayout = onRenameLayout, onDeleteLayout = onDeleteLayout, onReorderLayouts = onReorderLayouts,
-            onSearchRowClicked = onSearchRowClicked,
+            onSearchRowClicked = onSearchRowClicked, frequent = frequent,
             onBackPressed = { goToPage(0) })
     }
     // The posture is read from the window the launcher actually occupies, not from the screen behind
@@ -259,7 +263,27 @@ private fun HomeScreen(
         }
     }
     }
-    WindowPosture.Compact ->
+    WindowPosture.Compact -> {
+    androidx.activity.compose.PredictiveBackHandler(
+        enabled = (pagerState.settledPage == 1 || predictingBack) && !state.isSettingsSheetShowing,
+    ) { events ->
+        predictingBack = true
+        try {
+            events.collect { event ->
+                if (glass.motion) {
+                    val position = 1f - event.progress.coerceIn(0f, 1f)
+                    val page = if (position >= .5f) 1 else 0
+                    pagerState.scrollToPage(page, position - page)
+                }
+            }
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            pagerState.scrollToPage(0)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { pagerState.scrollToPage(1) }
+            throw cancelled
+        } finally { predictingBack = false }
+    }
     HorizontalPager(
         state = pagerState,
         flingBehavior = PagerDefaults.flingBehavior(state = pagerState, pagerSnapDistance = PagerSnapDistance.atMost(2)),
@@ -274,6 +298,7 @@ private fun HomeScreen(
             0 -> Box(Modifier.fillMaxSize().clipToBounds().startReveal(pagerState, glass.motion, pagerWidth)) { start(true) }
             1 -> allApps()
         }
+    }
     }
     }
     }

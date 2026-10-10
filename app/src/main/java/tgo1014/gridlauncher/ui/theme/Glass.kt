@@ -161,9 +161,11 @@ fun TileTurn(key: Any?, modifier: Modifier = Modifier, content: @Composable () -
     val flip = remember { Animatable(0f) }
     var previous by remember { mutableStateOf(key) }
     LaunchedEffect(key, glass.motion, glass.settings.isTileFlipEnabled) {
+        flip.snapTo(0f)
         if (previous != key && glass.motion && glass.settings.isTileFlipEnabled) {
-            flip.snapTo(0f); flip.animateTo(-180f, tween(150, easing = FastOutSlowInEasing))
-            flip.snapTo(180f); flip.animateTo(360f, tween(180, easing = FastOutSlowInEasing))
+            flip.animateTo(-90f, tween(130, easing = FastOutSlowInEasing))
+            flip.snapTo(90f)
+            flip.animateTo(0f, tween(180, easing = FastOutSlowInEasing))
         }
         previous = key
     }

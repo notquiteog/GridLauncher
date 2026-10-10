@@ -27,6 +27,11 @@ object SensorTiles {
     /** Starts listening. Call [stop] when the launcher is no longer resumed. */
     fun start(context: Context): Reading {
         val manager = manager(context) ?: return Reading()
+        fun granted(permission: String) = androidx.core.content.ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val canReadSteps = granted(android.Manifest.permission.ACTIVITY_RECOGNITION)
+        val canReadHeart = granted("android.permission.health.READ_HEART_RATE")
+        if (!canReadSteps) steps = null
+        if (!canReadHeart) bpm = null
         if (listener == null) {
             var daily = 0
             var heart = 0
@@ -39,11 +44,13 @@ object SensorTiles {
                 }
                 override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
             }
-            manager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let {
-                manager.registerListener(l, it, SensorManager.SENSOR_DELAY_UI)
-                since = System.currentTimeMillis()
+            if (canReadSteps) manager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let {
+                runCatching { manager.registerListener(l, it, SensorManager.SENSOR_DELAY_UI) }
+                    .onSuccess { registered -> if (registered) since = System.currentTimeMillis() }
             }
-            manager.getDefaultSensor(Sensor.TYPE_HEART_RATE)?.let { manager.registerListener(l, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            if (canReadHeart) manager.getDefaultSensor(Sensor.TYPE_HEART_RATE)?.let {
+                runCatching { manager.registerListener(l, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            }
             listener = l
         }
         return Reading(steps, bpm, since)
@@ -54,6 +61,8 @@ object SensorTiles {
         listener?.let { manager.unregisterListener(it) }
         listener = null
     }
+
+    fun reading() = Reading(steps, bpm, since)
 
     fun forget() { steps = null; bpm = null; since = null }
 

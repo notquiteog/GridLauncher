@@ -18,6 +18,11 @@ import javax.inject.Singleton
 @Singleton
 class UsageTracker @Inject constructor(private val store: DataStore<Preferences>, private val json: Json) {
 
+    private val recentKey = stringPreferencesKey("recentApps")
+    val recent: Flow<List<String>> = store.data.map { prefs ->
+        runCatching { json.decodeFromString<List<String>>(prefs[recentKey] ?: "[]") }.getOrDefault(emptyList())
+    }
+
     private val countsKey = stringPreferencesKey("appUsage")
 
     val frequent: Flow<List<String>> = store.data.map { prefs -> ranked(prefs[countsKey]) }
@@ -36,8 +41,10 @@ class UsageTracker @Inject constructor(private val store: DataStore<Preferences>
             // Keep the store small: only the apps still worth suggesting.
             val trimmed = counts.entries.sortedByDescending { it.value }.take(60).associate { it.key to it.value }
             prefs[countsKey] = json.encodeToString(trimmed)
+            val previous = runCatching { json.decodeFromString<List<String>>(prefs[recentKey] ?: "[]") }.getOrDefault(emptyList())
+            prefs[recentKey] = json.encodeToString((listOf(packageName) + previous.filterNot { it == packageName }).take(60))
         }
     }
 
-    suspend fun clear() = store.edit { it.remove(countsKey) }
+    suspend fun clear() = store.edit { it.remove(countsKey); it.remove(recentKey) }
 }

@@ -62,6 +62,10 @@ fun SettingsBottomSheet(
     var importTheme by remember { mutableStateOf(false) }
     var messageSent by remember { mutableStateOf(false) }
     var snack by remember { mutableStateOf<String?>(null) }
+    val sensors = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        tgo1014.gridlauncher.live.SensorTiles.stop(context)
+        tgo1014.gridlauncher.live.SensorTiles.start(context)
+    }
     val quietGranted = remember(quietTick) { tgo1014.gridlauncher.live.QuietHours.granted(context) }
     val wallpaper = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let { onSettingsEvent(SettingsEvent.OnWallpaperPicked(it)) }
@@ -77,6 +81,10 @@ fun SettingsBottomSheet(
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Make it yours", style = MaterialTheme.typography.headlineLarge)
             Text("Start, with a personal touch.", style = MaterialTheme.typography.bodyMedium)
+            if (tgo1014.gridlauncher.live.SensorTiles.available(context)) {
+                TextButton(onClick = { sensors.launch(arrayOf(android.Manifest.permission.ACTIVITY_RECOGNITION,
+                    "android.permission.health.READ_HEART_RATE")) }) { Text("Allow step and heart-rate sensors") }
+            }
             TextButton(onClick = { activity?.chooseDefaultLauncher() }) { Text("Set as default home app") }
             if (activity?.updater?.eligible == true) {
                 val updateState by activity.updater.state.collectAsState()
@@ -117,6 +125,13 @@ fun SettingsBottomSheet(
                 }
             }
             Text("Most used and Recent order the drawer by the apps you actually open, counted on this device.", style = MaterialTheme.typography.bodySmall)
+            SettingSwitch("App suggestions", tileSettings.showAppSuggestions) {
+                onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(showAppSuggestions = it)))
+            }
+            Text("Long press a suggestion to hide it. Hidden suggestions still appear in All apps and search.", style = MaterialTheme.typography.bodySmall)
+            if (tileSettings.excludedSuggestionApps.isNotEmpty()) TextButton(onClick = {
+                onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(excludedSuggestionApps = emptySet())))
+            }) { Text("Reset hidden suggestions (${tileSettings.excludedSuggestionApps.size})") }
             SettingSwitch("Fullscreen", tileSettings.fullscreen) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(fullscreen = it))) }
             Text("Hides the status and navigation bars. Android brings them back with a swipe from the edge.", style = MaterialTheme.typography.bodySmall)
             SettingSwitch("Tinted icons", tileSettings.iconTint) { onSettingsEvent(SettingsEvent.OnSettingsUpdated(tileSettings.copy(iconTint = it))) }

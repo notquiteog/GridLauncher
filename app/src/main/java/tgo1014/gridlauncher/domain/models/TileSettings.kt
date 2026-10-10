@@ -27,6 +27,9 @@ data class TileSettings(
     val hotseat: List<String> = emptyList(),
     /** A1Z26, most used, or recently used. */
     val drawerSort: String = "alphabetical",
+    val showAppSuggestions: Boolean = true,
+    /** Suggestions only: these apps remain available in the drawer, search and Start. */
+    val excludedSuggestionApps: Set<String> = emptySet(),
     val iconTint: Boolean = false,
     /** One of [IconShape]'s keys. Full bleed is the default because it is what the launcher has
      * always drawn: Windows Phone filled its tiles edge to edge, and so do we. */

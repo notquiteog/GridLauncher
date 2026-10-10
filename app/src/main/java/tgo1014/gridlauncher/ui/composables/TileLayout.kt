@@ -56,7 +56,7 @@ fun TileLayout(
                 onFocus = { onFocusTile(tile) },
                 onFolder = { openPath = openPath + it }, onItemClicked = onItemClicked,
                 onItemLongClicked = onItemLongClicked, onItemDropped = { item, dx, dy -> onItemDropped(item, kotlin.math.round(dx / pixels).toInt(), kotlin.math.round(dy / pixels).toInt()) },
-                modifier = Modifier.fillMaxSize().graphicsLayer {
+                modifier = Modifier.fillMaxSize().padding(2.dp).graphicsLayer {
                     translationX = (position.x - target.x).toFloat(); translationY = (position.y - target.y).toFloat()
                     transformOrigin = TransformOrigin(0f, 0f)
                     scaleX = dimensions.width.toFloat() / size.width.coerceAtLeast(1); scaleY = dimensions.height.toFloat() / size.height.coerceAtLeast(1)

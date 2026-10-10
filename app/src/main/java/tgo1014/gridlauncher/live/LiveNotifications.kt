@@ -29,6 +29,14 @@ data class TileNotification(
     val isNow: Boolean get() = ongoing && (progressMax > 0 || indeterminate || promoted || category in listOf(Notification.CATEGORY_TRANSPORT, Notification.CATEGORY_NAVIGATION, Notification.CATEGORY_STOPWATCH, Notification.CATEGORY_PROGRESS))
 }
 
+private fun launchOptions(widgetTap: Boolean) = android.app.ActivityOptions.makeBasic()
+    // An explicit tap on our widget arrives through a private receiver while another home is visible.
+    // Only that path delegates the temporary background-launch allowance from the user interaction.
+    .setPendingIntentBackgroundActivityStartMode(if (widgetTap)
+        android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
+        else android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE)
+    .toBundle()
+
 object NotificationTiles {
     private val mutable = MutableStateFlow<List<TileNotification>>(emptyList())
     val notifications = mutable.asStateFlow()
@@ -40,7 +48,7 @@ object NotificationTiles {
     @Synchronized fun post(item: TileNotification) { replace(mutable.value.filterNot { it.key == item.key } + item) }
     @Synchronized fun remove(key: String) { replace(mutable.value.filterNot { it.key == key }) }
 
-    fun act(context: Context, notificationKey: String, action: Notification.Action, reply: String? = null): Boolean {
+    fun act(context: Context, notificationKey: String, action: Notification.Action, reply: String? = null, widgetTap: Boolean = false): Boolean {
         if (context.getSystemService(KeyguardManager::class.java).isKeyguardLocked) return false
         // A dismissed/replaced notification must not retain a usable action in an open sheet.
         val current = mutable.value.firstOrNull { it.key == notificationKey } ?: return false
@@ -54,13 +62,13 @@ object NotificationTiles {
                 RemoteInput.addResultsToIntent(inputs.toTypedArray(), intent, Bundle().apply { inputs.forEach { putCharSequence(it.resultKey, reply) } })
                 RemoteInput.setResultsSource(intent, RemoteInput.SOURCE_FREE_FORM_INPUT)
             } else require(action.remoteInputs?.none { it.allowFreeFormInput } != false)
-            action.actionIntent.send(context, 0, intent)
+            action.actionIntent.send(context, 0, intent, null, null, null, launchOptions(widgetTap))
         }.isSuccess
     }
-    fun open(context: Context, key: String): Boolean {
+    fun open(context: Context, key: String, widgetTap: Boolean = false): Boolean {
         if (context.getSystemService(KeyguardManager::class.java).isKeyguardLocked) return false
         val intent = mutable.value.firstOrNull { it.key == key }?.contentIntent ?: return false
-        return runCatching { intent.send() }.isSuccess
+        return runCatching { intent.send(context, 0, null, null, null, null, launchOptions(widgetTap)) }.isSuccess
     }
 }
 
@@ -72,7 +80,9 @@ class LiveNotificationService : NotificationListenerService() {
     override fun onDestroy() { NotificationTiles.replace(emptyList()); super.onDestroy() }
 }
 
-internal fun StatusBarNotification.toTile(): TileNotification? = runCatching { notificationTile(key, packageName, notification, postTime) }.getOrNull()
+internal fun StatusBarNotification.toTile(): TileNotification? =
+    if (user != android.os.Process.myUserHandle()) null
+    else runCatching { notificationTile(key, packageName, notification, postTime) }.getOrNull()
 
 @Suppress("DEPRECATION")
 internal fun notificationTile(key: String, packageName: String, original: Notification, time: Long): TileNotification? {

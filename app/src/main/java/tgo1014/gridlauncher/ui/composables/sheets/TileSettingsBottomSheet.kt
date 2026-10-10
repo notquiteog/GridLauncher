@@ -49,6 +49,13 @@ fun TileSettingsBottomSheet(isShowing: Boolean, item: GridItem? = null, onTileEv
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.app.name, style = MaterialTheme.typography.headlineLarge)
                 Text("Edit tile", style = MaterialTheme.typography.labelLarge)
+                if (item.app.packageName == BuiltInTiles.FOLDER) {
+                    var name by remember(item.id, item.app.name) { mutableStateOf(item.app.name) }
+                    OutlinedTextField(name, { name = it.take(40) }, label = { Text("Folder name") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth())
+                    TextButton(enabled = name.isNotBlank() && name.trim() != item.app.name,
+                        onClick = { onFolderChanged(item.copy(app = item.app.copy(name = name.trim()))) }) { Text("Rename folder") }
+                }
                 if (!item.isGroup) {
                     Text("Tile color", style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {

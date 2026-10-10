@@ -5,6 +5,14 @@ import android.content.pm.LauncherApps
 import android.net.Uri
 import android.os.Process
 import android.provider.Settings
+import android.app.Activity
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -79,24 +87,24 @@ fun AppListScreen(
     onPinToHotseat: (String) -> Unit = {}, onSearch: () -> Unit = {}, onAskHandled: () -> Unit = {},
     onSearchRowClicked: (SearchRow) -> Unit = {},
 ) {
-    BackHandler(onBack = onBackPressed)
     val context = LocalContext.current
     val activity = androidx.activity.compose.LocalActivity.current as? tgo1014.gridlauncher.ui.MainActivity
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var alphabet by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull { it.isNotBlank() }?.let(onFilterTextChanged)
+    }
+    val voiceAvailable = context.packageManager.resolveActivity(DrawerSearch.voiceIntent(), 0) != null
 
     // The drawer sorts over real usage counts, not a guess: most used or most recent first.
     val ordered = remember(state.appList, state.tileSettings.drawerSort, frequent) {
-        when (state.tileSettings.drawerSort) {
-            "frequent" -> state.appList.sortedWith(compareByDescending<App> { app -> frequent.indexOf(app.packageName).let { if (it < 0) Int.MAX_VALUE else it } }
-                .thenBy { it.name.lowercase() })
-            "recent" -> state.appList.sortedByDescending { app -> frequent.indexOf(app.packageName).let { if (it < 0) -1 else -it } }
-            else -> state.appList.sortedBy { it.name.lowercase() }
-        }
+        orderApps(state.appList, state.tileSettings.drawerSort, frequent)
     }
     val grouped = remember(ordered, state.tileSettings.drawerSort) {
-        if (state.tileSettings.drawerSort == "alphabetical") ordered.groupBy { it.nameFirstLetter.uppercase() }
+        if (state.tileSettings.drawerSort == "alphabetical") ordered.groupBy { jumpLetterOf(it.name).toString() }
         else mapOf<String, List<App>>((if (state.tileSettings.drawerSort == "recent") "Recent" else "Most used") to ordered)
     }
     // The jump rail belongs here rather than on Start: Windows Phone kept the alphabet beside the app
@@ -131,7 +139,16 @@ fun AppListScreen(
         // them can overlap it at any pane height. It is the first weighted-height sibling, so
         // BOARD_SHARE still divides exactly the same remainder it did before: the field is a
         // fixed-height child wherever in the column it sits.
-        OutlinedTextField(state.filterString, onFilterTextChanged,
+        OutlinedTextField(state.filterString, onFilterTextChanged, shape = RectangleShape,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+            leadingIcon = if (voiceAvailable) { {
+                IconButton(onClick = {
+                    runCatching { voice.launch(DrawerSearch.voiceIntent()) }.onFailure {
+                        android.widget.Toast.makeText(context, "Voice search is unavailable.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }) { Icon(androidx.compose.ui.res.painterResource(tgo1014.gridlauncher.R.drawable.ic_voice_search), "Voice search", tint = ink) }
+            } } else null,
             // The visible placeholder is the reference's short "Search". What a screen reader is
             // told, and what the instrumented tests type into, is "Search apps": that is the phrase
             // that says what the box is for, while the visible word stays the reference's.
@@ -150,6 +167,14 @@ fun AppListScreen(
             // 8dp, not 12: it is the only gap between the search box and the date row, and every
             // dp of it is a dp of app list the user does not have to scroll to reach.
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
+        if (state.filterString.isNotBlank()) TextButton(onClick = {
+            keyboard?.hide()
+            DrawerSearch.openWeb(context, state.filterString)
+        }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Search, null, modifier = Modifier.size(20.dp))
+            Text("Search the web for “${state.filterString.trim()}”", maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
+        }
         // The date row and the way back to Start are one row. The reference's app list has no
         // heading for a back control to sit under - the list simply starts under the search box -
         // so the "All apps" title is gone, and a row left holding nothing but a back button would
@@ -164,10 +189,16 @@ fun AppListScreen(
             Text(tgo1014.gridlauncher.live.Clock.inZone(java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(java.util.Locale.getDefault(), "EEEMMMd"), java.util.Locale.getDefault())).format(tgo1014.gridlauncher.live.Clock.date()),
                 color = ink, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 4.dp))
             TextButton(onClick = { onEditLayout(!state.isEditingLayout) }) { Text(if (state.isEditingLayout) "Done" else "Edit layout", color = ink) }
+            ProfileAppsButton()
             IconButton(onClick = { onSettingsEvent(SettingsEvent.OnSettingsIconClicked) }) { Icon(Icons.Default.Settings, "Customize Start", tint = ink) }
         }
         LayoutSelector(state, ink, onProfile, onCreateLayout, onRenameLayout, onDeleteLayout, onReorderLayouts)
-        tgo1014.gridlauncher.ui.composables.FrequentRow(state.appList, frequent, state.tileSettings.drawerSort, onAppClicked, { onPinToHotseat(it.packageName) })
+        if (state.tileSettings.showAppSuggestions && state.filterString.isBlank()) {
+            tgo1014.gridlauncher.ui.composables.FrequentRow(state.appList, frequent, state.tileSettings.drawerSort, onAppClicked,
+                { onPinToHotseat(it.packageName) }, excluded = state.tileSettings.excludedSuggestionApps,
+                onExclude = { app -> onSettingsEvent(SettingsEvent.OnSettingsUpdated(state.tileSettings.copy(
+                    excludedSuggestionApps = state.tileSettings.excludedSuggestionApps + app.packageName))) })
+        }
         if (grouped.isEmpty() && found.isEmpty()) Text(if (state.filterString.isBlank()) "Looking for apps…" else "No apps found", Modifier.padding(16.dp))
         // The board and the app list are the only things still competing for height here, and the
         // board is the secondary one, so it is handed a weighted share of what the header, the
@@ -189,8 +220,16 @@ fun AppListScreen(
                     // A group header is a caption that heads a group, not a headline: 15sp, so it
                     // is a step under the 20sp names it introduces, and semibold, so at that size
                     // it still reads as a heading rather than as a stray letter.
-                    item(key = "letter:$letter") { Text(letter, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = headerInk,
-                        modifier = Modifier.clickable { alphabet = true }.padding(top = 10.dp, bottom = 4.dp)) }
+                    item(key = "letter:$letter") {
+                        if (state.tileSettings.drawerSort == "alphabetical") {
+                            TextButton(onClick = { alphabet = true }, shape = RectangleShape,
+                                contentPadding = PaddingValues(0.dp), modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, LocalGlass.current.accent)) {
+                                Text(letter, fontSize = 24.sp, fontWeight = FontWeight.Light, color = LocalGlass.current.accent)
+                            }
+                        } else Text(letter, fontSize = 20.sp, fontWeight = FontWeight.Light,
+                            color = headerInk, modifier = Modifier.padding(vertical = 12.dp))
+                    }
                     items(apps, key = { it.packageName }) { app ->
                         var menu by remember { mutableStateOf(false) }
                         val launcher = context.getSystemService(LauncherApps::class.java)
@@ -201,18 +240,20 @@ fun AppListScreen(
                         }
                         Box {
                             Row(Modifier.fillMaxWidth().combinedClickable(onClick = { onAppClicked(app) }, onLongClick = { menu = true }).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                // A 60dp mark and a 20sp name. The name is what the list is read
-                                // for, but at 28sp against a 56dp icon it out-scaled the thing it
-                                // was naming and the row read as two fights; at 20sp it is still the
-                                // largest type on the page and the icon has the row's measure. The
-                                // name takes the rest of the row so a long one ellipsises instead
-                                // of pushing the row taller.
-                                AppIconImage(app.icon.iconFile, Modifier.size(60.dp), app.icon.fill)
-                                Text(app.name, color = ink, fontSize = 20.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                // Compact marks leave the light app names as the main reading line.
+                                AppIconImage(app.icon.iconFile, Modifier.size(44.dp), app.icon.fill)
+                                Text(app.name, color = ink, fontSize = 22.sp, fontWeight = if (LocalGlass.current.highContrast) FontWeight.Medium else FontWeight.Light, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f).padding(start = 16.dp))
                             }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text("Pin to Start") }, onClick = { menu = false; onAddToGrid(app) })
+                                val excluded = app.packageName in state.tileSettings.excludedSuggestionApps
+                                DropdownMenuItem(text = { Text(if (excluded) "Allow in suggestions" else "Don’t suggest this app") }, onClick = {
+                                    menu = false
+                                    onSettingsEvent(SettingsEvent.OnSettingsUpdated(state.tileSettings.copy(excludedSuggestionApps =
+                                        if (excluded) state.tileSettings.excludedSuggestionApps - app.packageName
+                                        else state.tileSettings.excludedSuggestionApps + app.packageName)))
+                                })
                                 shortcuts.forEach { shortcut ->
                                     DropdownMenuItem(text = { Text("Pin: ${shortcut.shortLabel}") }, onClick = { menu = false; activity?.pinShortcut(app, shortcut) })
                                     DropdownMenuItem(text = { Text(shortcut.shortLabel?.toString().orEmpty()) }, onClick = {
@@ -421,7 +462,7 @@ private fun LayoutSelector(
                         }
                     }
                 }) {
-                FilterChip(selected = state.profile == name, onClick = { onProfile(name) },
+                FilterChip(selected = state.profile == name, onClick = { onProfile(name) }, shape = RectangleShape,
                     label = { Text(name, color = ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                     colors = FilterChipDefaults.filterChipColors(containerColor = Color.Transparent, selectedContainerColor = accent.copy(alpha = .22f)))
                 DropdownMenu(menu, { menu = false }) {
@@ -433,7 +474,7 @@ private fun LayoutSelector(
             }
         }
         item(layoutChipKey("add")) {
-            AssistChip(onClick = { newLayout = true }, label = { Text("New", color = ink) },
+            AssistChip(onClick = { newLayout = true }, shape = RectangleShape, label = { Text("New", color = ink) },
                 colors = AssistChipDefaults.assistChipColors(containerColor = Color.Transparent, labelColor = ink),
                 leadingIcon = { Icon(Icons.Default.Add, null, tint = ink, modifier = Modifier.size(18.dp)) })
         }

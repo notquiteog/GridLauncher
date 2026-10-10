@@ -462,8 +462,8 @@ object Screenshots {
      * extremes include antialiased edges, which is what makes this a floor rather than an average.
      */
     fun worstTextContrast(compose: AndroidComposeTestRule<*, out ComponentActivity>, label: String): Pair<Double, String> {
-        val bounds = compose.onNodeWithText(label, useUnmergedTree = true)
-            .fetchSemanticsNode().boundsInRoot
+        val bounds = compose.onAllNodesWithText(label, useUnmergedTree = true)
+            .fetchSemanticsNodes().first().boundsInRoot
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)

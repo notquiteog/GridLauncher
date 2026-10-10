@@ -41,6 +41,8 @@ class ScreenshotTest {
     /** The same screen in the light theme, over a light wallpaper. */
     @Test fun startInLightTheme() {
         Screenshots.seedRealIcons(compose, tgo1014.gridlauncher.domain.models.TileSettings(darkTheme = false), "wallpaper-light")
+        val (contrast, detail) = Screenshots.worstTextContrast(compose, "Greeting")
+        assertTrue("Light Start must paint its tile labels, not just their semantics: $detail", contrast >= 4.5)
         Screenshots.verify(compose, "start-light")
     }
 

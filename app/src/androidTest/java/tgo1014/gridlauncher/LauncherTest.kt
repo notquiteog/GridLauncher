@@ -29,6 +29,104 @@ class LauncherTest {
         }
         compose.waitForIdle()
     }
+    @Test fun predictiveBackCancellationKeepsSearchAndCommitReturnsHome() = checkPredictiveBack()
+
+    @Test fun predictiveBackAlsoWorksWithSystemAnimationsEnabled() {
+        val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+        val resolver = compose.activity.contentResolver
+        val key = android.provider.Settings.Global.ANIMATOR_DURATION_SCALE
+        val previous = android.provider.Settings.Global.getString(resolver, key) ?: "1"
+        automation.adoptShellPermissionIdentity(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+        try {
+            android.provider.Settings.Global.putFloat(resolver, key, 1f)
+            compose.activityRule.scenario.recreate()
+            checkPredictiveBack()
+        } finally {
+            android.provider.Settings.Global.putString(resolver, key, previous)
+            automation.dropShellPermissionIdentity()
+        }
+    }
+
+    private fun checkPredictiveBack() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Search apps").performTextInput("settings")
+        compose.runOnUiThread {
+            androidx.core.view.WindowCompat.getInsetsController(compose.activity.window, compose.activity.window.decorView)
+                .hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }
+        compose.waitForIdle()
+        compose.runOnUiThread {
+            compose.activity.onBackPressedDispatcher.dispatchOnBackStarted(androidx.activity.BackEventCompat(0f, 100f, 0f, 0))
+            compose.activity.onBackPressedDispatcher.dispatchOnBackProgressed(androidx.activity.BackEventCompat(120f, 100f, .7f, 0))
+        }
+        compose.waitForIdle()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.dispatchOnBackCancelled() }
+        compose.waitForIdle()
+        compose.onNodeWithText("settings").assertIsDisplayed()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("All apps").assertIsDisplayed()
+    }
+
+    @Test fun backFromDrawerReturnsToStartWhileEditingLayout() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").performClick()
+        compose.onNodeWithText("All apps").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Done").assertIsDisplayed()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        compose.onNodeWithText("All apps").assertIsDisplayed()
+    }
+
+    @Test fun androidProfilesOpenAndCanBeDismissed() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithContentDescription("Android profiles").performClick()
+        compose.onNodeWithText("Search unlocked profiles").assertIsDisplayed()
+        compose.onNodeWithText("Show private space").assertIsDisplayed()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Search unlocked profiles").assertDoesNotExist()
+    }
+
+    @Test fun widgetPinRequestsAreAcceptedByTheHomeActivity() {
+        val context = compose.activity
+        val automation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("cmd package set-home-activity ${context.packageName}/tgo1014.gridlauncher.ui.MainActivity")).use { it.readBytes() }
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("appwidget grantbind --package ${context.packageName} --user 0")).use { it.readBytes() }
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        val manager = android.appwidget.AppWidgetManager.getInstance(context)
+        assertTrue(manager.isRequestPinAppWidgetSupported)
+        compose.runOnUiThread {
+            assertTrue(manager.requestPinAppWidget(android.content.ComponentName(context, GridLiveTileProvider::class.java), null, null))
+        }
+        val device = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+        // The confirmation is a platform AlertDialog, outside the Compose semantics tree.
+        val deadline = System.currentTimeMillis() + 5000
+        var pin: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (pin == null && System.currentTimeMillis() < deadline) {
+            pin = device.rootInActiveWindow?.findAccessibilityNodeInfosByText("Pin")?.firstOrNull { it.isClickable }
+            if (pin == null) Thread.sleep(100)
+        }
+        assertNotNull("Widget pin confirmation must be visible", pin)
+        pin!!.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+        compose.waitUntil(5000) { runBlocking { context.appsManager.homeGridFlow.first().any { it.widgetId >= 0 } } }
+    }
+
+    @Test fun recentOrderDiffersFromFrequencyWithoutSavingTimestamps() {
+        val usage = compose.activity.usage
+        runBlocking {
+            usage.clear()
+            repeat(3) { usage.record("most.used") }
+            usage.record("last.opened")
+            assertEquals(listOf("most.used", "last.opened"), usage.frequent.first())
+            assertEquals(listOf("last.opened", "most.used"), usage.recent.first())
+            usage.clear()
+        }
+    }
+
     @Test fun appIconsUseCompleteDefaultSystemDrawable() {
         val context = compose.activity
         val packageName = "com.android.settings"
@@ -320,11 +418,84 @@ class LauncherTest {
         compose.onNodeWithText("All apps").performClick()
         runBlocking { context.settingsRepository.updateSettings(TileSettings(drawerSort = "frequent")) }
         compose.waitForIdle()
-        compose.onNodeWithText("Most used").assertIsDisplayed()
+        compose.onAllNodesWithText("Most used").onFirst().assertIsDisplayed()
         assertEquals(installed[0].packageName, runBlocking { context.usage.frequent.first() }.first())
         // Only real opens are recorded; a hub tile is not an app launch.
         runBlocking { context.usage.record(BuiltInTiles.CLOCK) }
         assertFalse(runBlocking { context.usage.frequent.first() }.contains(BuiltInTiles.CLOCK))
+    }
+
+    @Test fun suggestionsCanBeExcludedRestoredAndDisabledWithoutHidingApps() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        val context = compose.activity
+        val app = runBlocking { context.appsManager.installedAppsFlow.first { list -> list.any { it.packageName == "com.android.settings" } } }
+            .first { it.packageName == "com.android.settings" }
+        runBlocking { context.usage.clear(); context.usage.record(app.packageName) }
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithContentDescription("Suggested ${app.name}").performTouchInput { longClick() }
+        compose.onNodeWithText("Don’t suggest this app").performClick()
+        compose.onNodeWithContentDescription("Suggested ${app.name}").assertDoesNotExist()
+        compose.onNodeWithText("Search apps").performTextInput(app.name)
+        compose.onNode(hasText(app.name) and hasClickAction() and !hasSetTextAction())
+            .assertIsDisplayed().performTouchInput { longClick() }
+        compose.onNodeWithText("Allow in suggestions").performClick()
+        compose.onNodeWithText("Clear").performClick()
+        compose.onNodeWithContentDescription("Suggested ${app.name}").assertIsDisplayed()
+        runBlocking { context.settingsRepository.updateSettings(context.settingsRepository.tileSettingsFlow.first().copy(showAppSuggestions = false)) }
+        compose.onNodeWithContentDescription("Suggested ${app.name}").assertDoesNotExist()
+        compose.activityRule.scenario.recreate()
+        assertFalse(runBlocking { compose.activity.settingsRepository.tileSettingsFlow.first().showAppSuggestions })
+        runBlocking { compose.activity.usage.clear() }
+    }
+
+    @Test fun draggingAppsCreatesARenameableFolderThatSurvivesRecreation() {
+        val context = compose.activity
+        val apps = runBlocking { context.appsManager.installedAppsFlow.first { it.size >= 2 } }.take(2)
+        seed(listOf(GridItem(1, apps[0], 1), GridItem(2, apps[1], 1, x = 1)))
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Edit layout").performClick()
+        compose.waitForIdle()
+        val from = compose.onNodeWithContentDescription(apps[0].name)
+        val to = compose.onNodeWithContentDescription(apps[1].name)
+        val offset = to.fetchSemanticsNode().boundsInRoot.center - from.fetchSemanticsNode().boundsInRoot.center
+        from.performTouchInput { swipe(center, center + offset, 600) }
+        compose.onNodeWithText("Folder name").performTextReplacement("Daily tools")
+        compose.onNodeWithText("Rename folder").performClick()
+        compose.waitUntil(5000) { runBlocking { context.appsManager.homeGridFlow.first().singleOrNull()?.app?.name == "Daily tools" } }
+        // The modal owns a separate window, so Back must go to that window, not the activity.
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitForIdle()
+        compose.onNodeWithText("Folder name").assertDoesNotExist()
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Done").performClick()
+        compose.waitForIdle()
+        compose.activityRule.scenario.recreate()
+        val folder = runBlocking { compose.activity.appsManager.homeGridFlow.first() }.single()
+        assertEquals("Daily tools", folder.app.name)
+        assertEquals(apps.map { it.packageName }.toSet(), folder.children.map { it.packageName }.toSet())
+        compose.onNodeWithContentDescription("Daily tools").performClick()
+        apps.forEach { compose.onNodeWithText(it.name).assertIsDisplayed() }
+    }
+
+    @Test fun webSearchUsesAnExplicitActionAndEncodesBrowserFallback() {
+        seed(listOf(GridItem(1, App("Clock", BuiltInTiles.CLOCK), 1)))
+        val query = "café & tea #1?"
+        compose.onNodeWithText("All apps").performClick()
+        compose.onNodeWithText("Search apps").performTextInput(query)
+        compose.onNodeWithText("Search the web for “$query”").assertIsDisplayed()
+        val web = tgo1014.gridlauncher.ui.home.DrawerSearch.webIntent(query)
+        assertEquals(Intent.ACTION_WEB_SEARCH, web.action)
+        assertEquals(query, web.getStringExtra(android.app.SearchManager.QUERY))
+        val browser = tgo1014.gridlauncher.ui.home.DrawerSearch.browserIntent(query)
+        assertEquals("https", browser.data!!.scheme)
+        assertEquals(query, browser.data!!.getQueryParameter("q"))
+        val voice = tgo1014.gridlauncher.ui.home.DrawerSearch.voiceIntent()
+        assertEquals(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH, voice.action)
+        assertEquals(android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+            voice.getStringExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL))
+        compose.onNodeWithText("Clear").performClick()
+        compose.onNodeWithText("Search the web for", substring = true).assertDoesNotExist()
     }
 
     @Test fun aHotseatPinsUpToFourAppsOutsideTheGrid() {

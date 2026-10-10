@@ -109,6 +109,18 @@ class MainActivity : ComponentActivity() {
     private val homeViewModel: HomeScreenViewModel by viewModels()
     val widgetHost by lazy { AppWidgetHost(this, 1701) }
     private var pendingWidget = -1
+    private var pendingWidgetPin: android.content.pm.LauncherApps.PinItemRequest? = null
+    private val bindPinnedWidget = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (it.resultCode == RESULT_OK) acceptBoundWidget() else cancelWidget()
+    }
+    private fun acceptBoundWidget() {
+        val request = pendingWidgetPin ?: return cancelWidget()
+        runCatching {
+            check(request.isValid && request.accept(Bundle().apply { putInt(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidget) }))
+            pendingWidgetPin = null
+            finishWidget()
+        }.onFailure { cancelWidget(); message("This widget could not be pinned") }
+    }
     private var returningFromApp = false
 
     /** Lets Start fade itself back in the next time this activity resumes. */
@@ -163,6 +175,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingWidget = savedInstanceState?.getInt("pendingWidget", -1) ?: -1
+        pendingWidgetPin = savedInstanceState?.getParcelable("pendingWidgetPin", android.content.pm.LauncherApps.PinItemRequest::class.java)
         tgo1014.gridlauncher.live.StartSearchIndex.start(this)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
@@ -170,7 +183,7 @@ class MainActivity : ComponentActivity() {
             setHandoffEnabled(settings.handoffEnabled, android.app.HandoffActivityParams.Builder().build())
         } }
         receiveHandoff(intent)
-        receivePinRequest(intent)
+        if (savedInstanceState == null) receivePinRequest(intent)
         setContent {
             val settings by settingsRepository.tileSettingsFlow.collectAsState(initial = tgo1014.gridlauncher.domain.models.TileSettings())
             GridLauncherTheme(accent = androidx.compose.ui.graphics.Color(settings.accentColor.toInt()), dark = settings.darkTheme) {
@@ -179,7 +192,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    override fun onSaveInstanceState(outState: Bundle) { outState.putInt("pendingWidget", pendingWidget); super.onSaveInstanceState(outState) }
+    override fun onSaveInstanceState(outState: Bundle) { outState.putInt("pendingWidget", pendingWidget); outState.putParcelable("pendingWidgetPin", pendingWidgetPin); super.onSaveInstanceState(outState) }
     override fun onStart() {
         super.onStart(); runCatching { widgetHost.startListening() }
         val filter = android.content.IntentFilter().apply {
@@ -188,6 +201,7 @@ class MainActivity : ComponentActivity() {
         androidx.core.content.ContextCompat.registerReceiver(this, packageUpdates, filter, androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
     }
     override fun onStop() { unregisterReceiver(packageUpdates); widgetHost.stopListening(); tgo1014.gridlauncher.live.SensorTiles.stop(this); super.onStop() }
+    override fun onPause() { tgo1014.gridlauncher.live.SensorTiles.stop(this); super.onPause() }
     override fun onResume() {
         super.onResume()
         if (returningFromApp) returningFromApp = false
@@ -200,11 +214,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveHandoff(intent); receivePinRequest(intent); if (intent.action == Intent.ACTION_MAIN) homeViewModel.onGoToHome() }
 
     private fun receivePinRequest(intent: Intent?) {
-        if (intent?.action != android.content.pm.LauncherApps.ACTION_CONFIRM_PIN_SHORTCUT) return
+        if (intent?.action !in listOf(android.content.pm.LauncherApps.ACTION_CONFIRM_PIN_SHORTCUT,
+                android.content.pm.LauncherApps.ACTION_CONFIRM_PIN_APPWIDGET)) return
         val launcher = getSystemService(android.content.pm.LauncherApps::class.java)
-        val request = launcher.getPinItemRequest(intent) ?: return
+        val request = runCatching { launcher.getPinItemRequest(intent) }.getOrNull() ?: return
+        if (request.requestType == android.content.pm.LauncherApps.PinItemRequest.REQUEST_TYPE_APPWIDGET) {
+            receiveWidgetPin(request)
+            return
+        }
         val shortcut = request.shortcutInfo ?: return
-        if (!request.isValid) return
+        if (!request.isValid || shortcut.userHandle != android.os.Process.myUserHandle()) return
         android.app.AlertDialog.Builder(this).setTitle("Pin ${shortcut.shortLabel}?")
             .setMessage("Add this app destination to your current Start layout.")
             .setNegativeButton("Cancel", null).setPositiveButton("Pin") { _, _ ->
@@ -215,6 +234,30 @@ class MainActivity : ComponentActivity() {
                         homeViewModel.addSpecialTile(GridItem(app = app.copy(name = shortcut.shortLabel?.toString() ?: app.name), width = 1, shortcutId = shortcut.id))
                     }
                 }.onFailure { message("This shortcut is no longer available") }
+            }.show()
+    }
+
+    private fun receiveWidgetPin(request: android.content.pm.LauncherApps.PinItemRequest) {
+        if (!request.isValid) return
+        val info = request.getAppWidgetProviderInfo(this) ?: return
+        // Private/work widget contents must not escape their profile container onto personal Start.
+        if (info.profile != android.os.Process.myUserHandle()) return
+        android.app.AlertDialog.Builder(this).setTitle("Pin ${info.loadLabel(packageManager)}?")
+            .setMessage("Add this widget to your current Start layout.")
+            .setNegativeButton("Cancel", null).setPositiveButton("Pin") { _, _ ->
+                if (pendingWidget != -1) { message("Finish adding the current widget first"); return@setPositiveButton }
+                val id = widgetHost.allocateAppWidgetId()
+                runCatching {
+                    pendingWidget = id
+                    pendingWidgetPin = request
+                    // Bind first; accept only acknowledges the pin and does not bind the host id.
+                    if (AppWidgetManager.getInstance(this).bindAppWidgetIdIfAllowed(id, info.profile, info.provider, null)) {
+                        acceptBoundWidget()
+                    } else bindPinnedWidget.launch(Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile))
+                }.onFailure { cancelWidget(); message("This widget could not be pinned") }
             }.show()
     }
 
@@ -247,7 +290,7 @@ class MainActivity : ComponentActivity() {
             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidget)) }
             .onFailure { cancelWidget(); message("No widget picker is available on this device") }
     }
-    private fun cancelWidget() { if (pendingWidget != -1) widgetHost.deleteAppWidgetId(pendingWidget); pendingWidget = -1 }
+    private fun cancelWidget() { pendingWidgetPin = null; if (pendingWidget != -1) widgetHost.deleteAppWidgetId(pendingWidget); pendingWidget = -1 }
     private fun finishWidget() {
         val id = pendingWidget
         val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return cancelWidget()

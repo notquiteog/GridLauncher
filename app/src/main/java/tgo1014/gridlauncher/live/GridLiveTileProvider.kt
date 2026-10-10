@@ -43,11 +43,11 @@ class ActionReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val key = intent.getStringExtra(EXTRA_KEY) ?: return
         when (intent.action) {
-            ACTION_OPEN -> NotificationTiles.open(context, key)
+            ACTION_OPEN -> NotificationTiles.open(context, key, widgetTap = true)
             ACTION_ACT -> {
                 val notification = NotificationTiles.notifications.value.firstOrNull { it.key == key } ?: return
                 val action = notification.actions.getOrNull(intent.getIntExtra(EXTRA_INDEX, -1)) ?: return
-                NotificationTiles.act(context, key, action)
+                NotificationTiles.act(context, key, action, widgetTap = true)
             }
         }
         LiveTileWidget.refresh(context)
@@ -168,7 +168,7 @@ object LiveTileWidget {
             .putExtra(ActionReceiver.EXTRA_KEY, key).putExtra(ActionReceiver.EXTRA_INDEX, index)
             .setPackage(context.packageName)
         return PendingIntent.getBroadcast(context, "$action$key$index".hashCode(), intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 }
 

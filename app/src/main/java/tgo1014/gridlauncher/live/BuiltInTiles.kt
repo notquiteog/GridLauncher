@@ -158,7 +158,9 @@ object BuiltInTiles {
 
     private fun steps(context: Context): Pair<String, String> {
         if (!SensorTiles.available(context)) return "Steps" to "No step sensor"
-        val reading = SensorTiles.start(context)
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACTIVITY_RECOGNITION)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) return "Steps" to "Allow sensors in Customize Start"
+        val reading = SensorTiles.reading()
         val count = reading.steps
         if (count == null) return "Steps" to "Waiting for a reading"
         val (steps, distance, heart) = SensorTiles.detail(count, reading.bpm)

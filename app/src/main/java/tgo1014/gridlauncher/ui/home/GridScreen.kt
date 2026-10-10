@@ -20,6 +20,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -49,15 +50,26 @@ fun GridScreenScreen(
     onTileEvent: (TileEvent) -> Unit = {}, onEditLayout: (Boolean) -> Unit = {},
     onSettingsEvent: (SettingsEvent) -> Unit = {}, showAllAppsLink: Boolean = true,
     onOpenApp: (App) -> Unit = {}, onFolderChanged: (GridItem) -> Unit = {},
-    onHandoffFocusHandled: () -> Unit = {},
+    onHandoffFocusHandled: () -> Unit = {}, isActivePane: Boolean = true,
 ) {
     val glass = LocalGlass.current
-    BackHandler(enabled = state.isEditingLayout && state.itemBeingEdited == null) { onEditLayout(false) }
+    var headerScroll by remember(state.profile) { mutableFloatStateOf(0f) }
+    val collapseRange = with(androidx.compose.ui.platform.LocalDensity.current) { 260.dp.toPx() }
+    val headerConnection = remember(collapseRange, state.profile) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset,
+                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                headerScroll = (headerScroll - consumed.y).coerceIn(0f, collapseRange)
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+        }
+    }
+    BackHandler(enabled = isActivePane && state.isEditingLayout && state.itemBeingEdited == null) { onEditLayout(false) }
     var focusedId by remember(state.profile) { mutableStateOf<Int?>(null) }
     LaunchedEffect(state.handoffFocus) { if (state.handoffFocus != null) { focusedId = state.handoffFocus; onHandoffFocusHandled() } }
     val focused = state.grid.firstOrNull { it.id == focusedId }
     val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+    LaunchedEffect(isActivePane) { if (isActivePane) runCatching { focusRequester.requestFocus() } }
 
     fun handleKey(event: KeyEvent): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
@@ -99,37 +111,30 @@ fun GridScreenScreen(
         animationSpec = if (glass.motion) androidx.compose.animation.core.tween(200) else androidx.compose.animation.core.snap(),
         label = "Return")
     Column(Modifier.fillMaxSize().systemBarsPadding().graphicsLayer { alpha = returnAlpha }
-        .focusRequester(focusRequester).focusable().onPreviewKeyEvent(::handleKey)) {
+        .nestedScroll(headerConnection).focusRequester(focusRequester).focusable().onPreviewKeyEvent(::handleKey)) {
         Box(Modifier.fillMaxWidth().animateContentSize(if (glass.motion) spring(dampingRatio = .9f, stiffness = 350f) else snap())) {
             if (state.tileSettings.oneHanded) Spacer(Modifier.height(100.dp))
-            StartHeader(visible = state.tileSettings.showStartHeader && !state.tileSettings.oneHanded)
+            StartHeader(visible = state.tileSettings.showStartHeader && !state.tileSettings.oneHanded, scrollFraction = headerScroll / collapseRange)
         }
+        // Recreate lazy tile draw layers when switching palette; retained layers can otherwise
+        // keep stale content while their backgrounds have already adopted the new theme.
+        key(state.tileSettings.darkTheme) {
         TileLayout(grid = state.grid, columns = state.tileSettings.gridColumns, tileSettings = state.tileSettings,
             hazeState = hazeState, itemBeingEdited = state.itemBeingEdited, editingLayout = state.isEditingLayout,
             onItemLongClicked = onItemLongClicked, onItemClicked = onItemClicked, onItemDropped = onItemDropped,
             focusedId = focusedId, onFocusTile = { focusedId = it.id }, profile = state.profile,
             contentPadding = if (state.itemBeingEdited == null) PaddingValues(0.dp) else PaddingValues(bottom = 200.dp),
-            modifier = Modifier.fillMaxWidth().weight(1f))
+            modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp))
+        }
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
             Hotseat(state.appList, state.tileSettings.hotseat, onOpenApp)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                // Windows Phone put the way into the app list at the bottom left of Start, and left
-                // it as a bare arrow with nothing written beside it. So the name is carried by the
-                // button's semantics rather than drawn next to it: a content description is what
-                // TalkBack reads, and the text property is what anything matching this button by
-                // name - the device tests among them - already looks for.
-                if (showAllAppsLink) IconButton(
-                    onClick = onFooterClicked,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .semantics(mergeDescendants = true) {
-                            contentDescription = "All apps"
-                            text = AnnotatedString("All apps")
-                        },
-                ) {
+                Spacer(Modifier.weight(1f))
+                if (showAllAppsLink) TextButton(onClick = onFooterClicked) {
+                    Text("All apps", color = glass.ink, fontSize = 16.sp)
+                    Spacer(Modifier.width(8.dp))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = glass.ink, modifier = Modifier.size(22.dp))
                 }
-                Spacer(Modifier.weight(1f))
                 // Quiet is a state of the launcher, not a label for the arrow, so it sits at the end
                 // of the row and keeps the leading corner to the one control Windows Phone put there.
                 if (QuietHours.active(state.tileSettings)) {

@@ -55,6 +55,7 @@ class HomeScreenViewModel @Inject constructor(
 
     /** Package names by how often you open them, for the drawer's Frequent and Recent sorts. */
     val frequentApps = usage.frequent
+    val recentApps = usage.recent
 
     fun pinToHotseat(packageName: String) = viewModelScope.launch {
         val settings = settingsRepository.tileSettingsFlow.first()
@@ -186,16 +187,12 @@ class HomeScreenViewModel @Inject constructor(
         val grid = appsManager.homeGridFlow.first()
         val current = grid.firstOrNull { it.id == item.id } ?: return@launch
         val columns = settingsRepository.tileSettingsFlow.first().gridColumns
-        val landing = current.copy(x = current.x + dx, y = current.y + dy)
-        val folder = grid.firstOrNull { it.id != current.id && it.childCount > 0 && tgo1014.gridlauncher.domain.GridPlacement.overlaps(landing, it) }
-        if (folder != null) {
-            // Dropping a tile onto a folder puts the app inside it, the way Windows Phone did.
-            val updated = folder.copy(children = (folder.children + current.app).distinctBy { it.packageName })
-            appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.compact(
-                grid.map { if (it.id == folder.id) updated else if (it.id == current.id) null else it }.filterNotNull(), columns))
-        } else {
-            appsManager.setGrid(tgo1014.gridlauncher.domain.GridPlacement.update(grid, landing, columns))
-        }
+        val updated = tgo1014.gridlauncher.domain.TileDrop.apply(grid, current.id, dx, dy, columns)
+        appsManager.setGrid(updated)
+        // Offer a name immediately after creating the folder, using the normal folder editor.
+        updated.firstOrNull { tile -> tile.app.packageName == tgo1014.gridlauncher.live.BuiltInTiles.FOLDER &&
+            grid.firstOrNull { it.id == tile.id }?.app?.packageName != tgo1014.gridlauncher.live.BuiltInTiles.FOLDER
+        }?.let { folder -> _stateFlow.update { it.copy(itemBeingEdited = folder) } }
     }
 
     fun onGridItemLongClicked(gridItem: GridItem) {
@@ -307,7 +304,8 @@ class HomeScreenViewModel @Inject constructor(
         getAppListUseCase()
             .onEach { appList ->
                 fullAppList = appList
-                _stateFlow.update { it.copy(appList = appList) }
+                _stateFlow.update { state -> state.copy(appList = if (state.filterString.isBlank()) appList else
+                    appList.filter { it.name.withoutAccents.contains(state.filterString.withoutAccents.trim(), true) }) }
             }
             .launchIn(this)
         appsManager.homeGridFlow

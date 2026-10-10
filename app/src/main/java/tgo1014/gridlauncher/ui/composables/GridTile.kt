@@ -202,30 +202,31 @@ fun GridTile(
             translationX = drag.value.x; translationY = drag.value.y
             shape = RectangleShape; shadowElevation = if (lifted) 26.dp.toPx() else 0f
         }.clip(RectangleShape).background(tileColor)
-        .pointerInput(isEditMode, item.id) {
-            if (!isEditMode) return@pointerInput
+        .pointerInput(isEditMode, item.id, item.positionPinned) {
+            if (!isEditMode || item.positionPinned) return@pointerInput
             // Watches the Initial pass so the drag wins over the tile's own click handling.
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val slop = viewConfiguration.touchSlop
                 var total = Offset.Zero
                 var dragging = false
-                while (true) {
+                try { while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     // Handle the lift first: that is where the drop is committed.
                     if (change.changedToUp()) {
                         if (dragging && (total.x != 0f || total.y != 0f)) onItemDropped(item, total.x, total.y)
-                        drag.value = Offset.Zero
+                        if (dragging) change.consume()
                         break
                     }
                     val delta = change.positionChange()
-                    if (!dragging && total.getDistance() + delta.getDistance() > slop) {
+                    total += delta
+                    if (!dragging && total.getDistance() > slop) {
                         dragging = true
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     }
-                    if (dragging) { total += delta; drag.value = total }
-                }
+                    if (dragging) { change.consume(); drag.value = total }
+                } } finally { drag.value = Offset.Zero }
             }
         }
         .onFocusChanged { if (it.isFocused) onFocus() }
