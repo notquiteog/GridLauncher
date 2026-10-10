@@ -434,15 +434,19 @@ class LauncherTest {
         compose.onNodeWithText("All apps").performClick()
         compose.onNodeWithContentDescription("Suggested ${app.name}").performTouchInput { longClick() }
         compose.onNodeWithText("Don’t suggest this app").performClick()
-        compose.onNodeWithContentDescription("Suggested ${app.name}").assertDoesNotExist()
+        // The exclusion is dispatched through a coroutine into DataStore, so the click returns before
+        // the row is gone. Waiting rather than asserting is the difference between this test and a
+        // coin flip on a loaded runner: the menu item lands, the write lands, the row leaves - in
+        // that order, at whatever speed the machine manages.
+        compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Suggested ${app.name}").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText("Search apps").performTextInput(app.name)
         compose.onNode(hasText(app.name) and hasClickAction() and !hasSetTextAction())
             .assertIsDisplayed().performTouchInput { longClick() }
         compose.onNodeWithText("Allow in suggestions").performClick()
         compose.onNodeWithText("Clear").performClick()
-        compose.onNodeWithContentDescription("Suggested ${app.name}").assertIsDisplayed()
+        compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Suggested ${app.name}").fetchSemanticsNodes().isNotEmpty() }
         runBlocking { context.settingsRepository.updateSettings(context.settingsRepository.tileSettingsFlow.first().copy(showAppSuggestions = false)) }
-        compose.onNodeWithContentDescription("Suggested ${app.name}").assertDoesNotExist()
+        compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Suggested ${app.name}").fetchSemanticsNodes().isEmpty() }
         compose.activityRule.scenario.recreate()
         assertFalse(runBlocking { compose.activity.settingsRepository.tileSettingsFlow.first().showAppSuggestions })
         runBlocking { compose.activity.usage.clear() }
@@ -458,7 +462,16 @@ class LauncherTest {
         val from = compose.onNodeWithContentDescription(apps[0].name)
         val to = compose.onNodeWithContentDescription(apps[1].name)
         val offset = to.fetchSemanticsNode().boundsInRoot.center - from.fetchSemanticsNode().boundsInRoot.center
-        from.performTouchInput { swipe(center, center + offset, 600) }
+        // Not a timed swipe: a swipe ends with whatever velocity the interpolation implies, and on a
+        // slow runner the drawer can read that as a fling past the target rather than a drop on it,
+        // so no folder is created and the rename sheet never opens. Settling the finger before the
+        // lift is the same fix the screenshot harness documents for its own drags.
+        from.performTouchInput {
+            down(center)
+            moveTo(center + offset)
+            advanceEventTime(300)
+            up()
+        }
         compose.onNodeWithText("Folder name").performTextReplacement("Daily tools")
         compose.onNodeWithText("Rename folder").performClick()
         compose.waitUntil(5000) { runBlocking { context.appsManager.homeGridFlow.first().singleOrNull()?.app?.name == "Daily tools" } }
