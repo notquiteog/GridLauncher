@@ -472,6 +472,12 @@ class LauncherTest {
             advanceEventTime(300)
             up()
         }
+        // The drop is handled in a coroutine: onTileDropped launches, reads the grid, applies the
+        // folder and only then opens the rename sheet, so the drag's return cannot promise the sheet
+        // exists. Typing into it right away is a race a fast machine wins and a loaded runner
+        // loses - the exact failure this test showed on CI while passing locally. Wait for it, the
+        // way every other state-driven step in this suite does.
+        compose.waitUntil(5000) { compose.onAllNodesWithText("Folder name").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Folder name").performTextReplacement("Daily tools")
         compose.onNodeWithText("Rename folder").performClick()
         compose.waitUntil(5000) { runBlocking { context.appsManager.homeGridFlow.first().singleOrNull()?.app?.name == "Daily tools" } }
